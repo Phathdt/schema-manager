@@ -1,0 +1,10 @@
+schema-manager
+*.exe
+*.out
+*.test
+coverage*
+.DS_Store
+.idea/
+.vscode/
+.env
+*.log
