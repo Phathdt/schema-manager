@@ -8,3 +8,5 @@ coverage*
 .vscode/
 .env
 *.log
+
+/migrations
