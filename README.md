@@ -83,6 +83,12 @@ schema-manager validate
 
 # Show diff between schema and migrations
 schema-manager diff
+
+# Import existing database to schema.prisma (with baseline migration)
+schema-manager introspect --output schema.prisma
+
+# Sync database and schema.prisma (bi-directional)
+schema-manager sync
 ```
 
 ### Goose Integration
@@ -100,7 +106,7 @@ goose status
 
 ## Workflow
 
-### 1. Development Workflow
+### 1. Development Workflow (New Project)
 
 ```bash
 # 1. Edit schema file
@@ -116,7 +122,38 @@ cat migrations/20231116123456_add_new_fields.sql
 goose up
 ```
 
-### 2. Team Workflow
+### 2. Migrating from Existing Database
+
+```bash
+# 1. Connect to existing database and generate schema.prisma
+schema-manager introspect --output schema.prisma
+
+# 2. Apply baseline migration (safe with conditional SQL)
+goose up
+
+# 3. Future development works normally
+schema-manager generate --name "add_new_feature"
+goose up
+```
+
+### 3. Sync Workflow (Database Modified Outside)
+
+```bash
+# 1. Someone added table/fields directly to database
+# Check differences
+schema-manager sync --check
+
+# 2. Update schema.prisma with database changes
+schema-manager sync --update-schema
+
+# 3. Apply conditional migration (safe)
+goose up
+
+# 4. Continue normal development
+schema-manager generate --name "add_more_features"
+```
+
+### 4. Team Workflow
 
 ```bash
 # 1. Pull latest changes
@@ -143,7 +180,57 @@ git commit -m "Update user table schema"
 
 ## Migration Examples
 
-### 1. Initial Schema
+### 1. Baseline Migration (From Existing Database)
+
+**Existing Database:**
+```sql
+-- Table already exists in database
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Generated schema.prisma (from introspect):**
+```prisma
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+```
+
+**Generated Baseline Migration (Goose-compatible):**
+```sql
+-- +goose Up
+-- +goose StatementBegin
+-- Baseline migration from existing database
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+                   WHERE table_name = 'users') THEN
+        CREATE TABLE users (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    END IF;
+END $$;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP TABLE IF EXISTS users;
+-- +goose StatementEnd
+```
+
+### 2. Initial Schema
 
 **schema.prisma:**
 ```prisma
@@ -274,6 +361,39 @@ schema-manager diff
 - Shows what would be generated
 - Useful for reviewing changes before generation
 
+### `introspect`
+
+Import existing database structure into schema.prisma.
+
+```bash
+schema-manager introspect --output schema.prisma
+```
+
+**Features:**
+- Connects to existing database
+- Analyzes database structure (tables, columns, indexes, constraints)
+- Generates schema.prisma from database structure
+- Creates conditional baseline migration (Goose-compatible)
+- Uses IF NOT EXISTS for safe migration execution
+
+### `sync`
+
+Sync database schema with schema.prisma (bi-directional).
+
+```bash
+schema-manager sync                    # Interactive mode
+schema-manager sync --check           # Show differences only
+schema-manager sync --update-schema   # Update schema.prisma from DB
+schema-manager sync --generate-migration # Generate migration from schema
+```
+
+**Features:**
+- Compares database schema with schema.prisma
+- **If database has more**: Updates schema.prisma + creates conditional migration
+- **If schema.prisma has more**: Generates migration to update database
+- **Goose-compatible**: All migrations use conditional SQL (IF NOT EXISTS)
+- Interactive mode to confirm changes
+
 ## Best Practices
 
 ### 1. Migration Naming
@@ -334,6 +454,30 @@ git commit -m "Add product categories"
 3. **Migration Conflicts**
    - Use Goose to resolve conflicts
    - Ensure migrations are applied in order
+
+4. **Database Connection Issues**
+   ```bash
+   # Check database connection
+   export DATABASE_URL="postgresql://user:password@localhost/dbname"
+   schema-manager introspect --output schema.prisma
+   ```
+
+5. **Table Already Exists (After Sync)**
+   - Conditional migrations prevent this issue
+   - All migrations use IF NOT EXISTS
+   - Safe to run goose up multiple times
+
+6. **Schema Out of Sync**
+   ```bash
+   # Check differences
+   schema-manager sync --check
+
+   # Fix schema.prisma
+   schema-manager sync --update-schema
+
+   # Or generate migration
+   schema-manager sync --generate-migration
+   ```
 
 ## Integration with Goose
 
