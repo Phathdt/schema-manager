@@ -23,7 +23,7 @@
 - [ ] ~~Implement `migration resolve` command~~ ❌ **REMOVE**: Let goose handle this
 - [ ] ~~Implement `push` command~~ ❌ **REMOVE**: Let goose handle this
 - [ ] ~~Implement `rollback` command~~ ❌ **REMOVE**: Let goose handle this
-- [ ] **Implement `diff` command** ✅ **KEEP**: Core functionality for comparing schemas
+- [ ] ~~**Implement `diff` command**~~ ❌ **REMOVE**: Redundant with generate command
 - [ ] **Implement `introspect` command** ✅ **NEW**: Import existing database structure into schema.prisma
 - [ ] **Implement `sync` command** ✅ **NEW**: Bi-directional sync between database and schema.prisma
 
@@ -35,10 +35,9 @@
 ## **RECOMMENDED SIMPLIFIED TOOL** 🎯
 **Keep only these commands:**
 1. `validate` - Validate schema.prisma syntax
-2. `migration create --name <name>` - Generate migration from schema diff
-3. `diff` - Show diff between schema.prisma and current migration state
-4. **`introspect` - Import existing database structure into schema.prisma** ✅ **NEW**: For migrating from existing DB
-5. **`sync` - Sync database schema with schema.prisma (bi-directional)** ✅ **NEW**: Core functionality for schema sync
+2. `generate --name <name>` - Generate migration from schema diff
+3. **`introspect` - Import existing database structure into schema.prisma** ✅ **NEW**: For migrating from existing DB
+4. **`sync` - Sync database schema with schema.prisma (bi-directional)** ✅ **NEW**: Core functionality for schema sync
 
 **Remove these commands (let goose handle):**
 - All migration execution: `reset`, `status`, `resolve`, `push`, `rollback`

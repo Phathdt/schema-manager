@@ -81,9 +81,6 @@ schema-manager generate --name "add_product_table"
 # Validate Prisma schema
 schema-manager validate
 
-# Show diff between schema and migrations
-schema-manager diff
-
 # Import existing database to schema.prisma (with baseline migration)
 schema-manager introspect --output schema.prisma
 
@@ -347,19 +344,6 @@ schema-manager validate
 - Checks Prisma schema syntax
 - Validates required fields and attributes
 - Reports parsing errors
-
-### `diff`
-
-Show differences between schema and migrations.
-
-```bash
-schema-manager diff
-```
-
-**Features:**
-- Compares `schema.prisma` with `schema.prisma.next`
-- Shows what would be generated
-- Useful for reviewing changes before generation
 
 ### `introspect`
 

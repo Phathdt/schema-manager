@@ -6,7 +6,6 @@ func GetAllCommands() []*cli.Command {
 	return []*cli.Command{
 		GenerateCommand(),
 		ValidateCommand(),
-		DiffCommand(),
 		IntrospectCommand(),
 		SyncCommand(),
 	}
