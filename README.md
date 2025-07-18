@@ -488,6 +488,115 @@ goose up
 goose status
 ```
 
+## Roadmap
+
+### ✅ **Completed Features**
+
+#### **Core Migration System**
+- [x] Parse Prisma schema file (schema.prisma)
+- [x] Validate Prisma schema structure
+- [x] Generate Goose-compatible migration SQL from schema changes
+- [x] Field changes detection (CREATE, ALTER, DROP)
+- [x] Clean architecture with separate command files
+
+#### **Database Integration**
+- [x] **Introspect command** - Import existing database structure into schema.prisma
+- [x] **Sync command** - Bi-directional sync between database and schema.prisma
+- [x] **Database connection** - Connect to PostgreSQL for introspection/sync
+- [x] **Conditional migrations** - Safe IF NOT EXISTS SQL for existing databases
+
+#### **CLI Implementation**
+- [x] `validate` command - Validate schema.prisma syntax
+- [x] `generate` command - Generate migration from schema changes
+- [x] `introspect` command - Import database structure to schema.prisma
+- [x] `sync` command - Bi-directional schema synchronization
+
+#### **Goose Integration**
+- [x] **Compatible approach** - All migrations use Goose-compatible format
+- [x] **Conditional SQL** - Safe migrations with IF NOT EXISTS
+- [x] **Single source of truth** - Goose handles migration execution and tracking
+
+### 🎯 **Current Focus**
+
+#### **Simplified Tool Philosophy**
+- **Schema Manager**: Compare schemas and generate migrations
+- **Goose**: Execute migrations on database
+- **Unix Philosophy**: Do one thing and do it well
+
+#### **Supported Workflows**
+1. **New Project**: Edit schema → Generate migration → Apply with Goose
+2. **Existing Database**: Introspect → Baseline migration → Future development
+3. **Schema Out of Sync**: Sync check → Update schema or generate migration
+4. **Team Collaboration**: Pull → Apply migrations → Make changes → Generate → Commit
+
+### 🚀 **Future Enhancements**
+
+#### **Phase 1: Core Improvements**
+- [ ] **Enhanced type mapping** - More PostgreSQL data types support
+- [ ] **Relationship detection** - Foreign key constraints in introspection
+- [ ] **Index optimization** - Better index handling in migrations
+- [ ] **Error handling** - More detailed error messages and validation
+
+#### **Phase 2: Advanced Features**
+- [ ] **Multi-database support** - MySQL, SQLite support
+- [ ] **Schema versioning** - Track schema changes over time
+- [ ] **Migration rollback** - Generate reverse migrations
+- [ ] **Performance optimization** - Faster introspection for large databases
+
+#### **Phase 3: Developer Experience**
+- [ ] **Interactive CLI** - Better prompts and confirmations
+- [ ] **Configuration file** - Project-specific settings
+- [ ] **Migration templates** - Custom migration templates
+- [ ] **Integration tests** - Automated testing with real databases
+
+#### **Phase 4: Advanced Sync**
+- [ ] **Column modifications** - Handle column type changes in sync
+- [ ] **Data migration** - Handle data transformations
+- [ ] **Conflict resolution** - Better handling of schema conflicts
+- [ ] **Batch operations** - Optimize large schema synchronizations
+
+### 🎨 **Design Decisions**
+
+#### **What We Keep**
+- **Schema-first approach** - Prisma schema as source of truth
+- **Goose integration** - Compatible with existing migration tools
+- **Conditional migrations** - Safe for existing databases
+- **Clean CLI** - Simple, focused command interface
+
+#### **What We Removed**
+- **Migration execution** - Let Goose handle this
+- **Database state management** - Let Goose handle this
+- **Complex diff workflows** - Use generate command instead
+- **Redundant commands** - Removed diff command
+
+### 🧪 **Testing Strategy**
+
+#### **Current Testing**
+- [x] Manual testing with PostgreSQL
+- [x] Command-line interface testing
+- [x] Migration generation testing
+
+#### **Planned Testing**
+- [ ] Unit tests for schema parsing
+- [ ] Integration tests with real databases
+- [ ] Migration generation tests
+- [ ] CLI command tests
+- [ ] Cross-platform compatibility tests
+
+### 📋 **Known Limitations**
+
+#### **Current Limitations**
+- PostgreSQL only (MySQL, SQLite planned)
+- Basic relationship detection
+- Manual foreign key handling
+- Limited custom type support
+
+#### **Planned Improvements**
+- Multi-database support
+- Advanced relationship detection
+- Custom type mapping configuration
+- Performance optimizations for large schemas
+
 ## Contributing
 
 ### Development Setup
@@ -507,6 +616,14 @@ go build -o schema-manager main.go
 ./schema-manager validate
 ./schema-manager generate --name "test_migration"
 ```
+
+### Contributing Guidelines
+
+1. **Focus on simplicity** - Keep the Unix philosophy
+2. **Maintain Goose compatibility** - Don't break existing workflows
+3. **Add comprehensive tests** - Test with real databases
+4. **Document new features** - Update README and examples
+5. **Follow Go best practices** - Clean, readable code
 
 ## License
 
