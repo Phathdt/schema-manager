@@ -5,7 +5,7 @@ DATE := $(shell date +%Y-%m-%d)
 
 # Build configuration
 BINARY_NAME = schema-manager
-LDFLAGS = -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
+LDFLAGS = -ldflags "-X github.com/phathdt/schema-manager/cmd.Version=$(VERSION) -X github.com/phathdt/schema-manager/cmd.Commit=$(COMMIT) -X github.com/phathdt/schema-manager/cmd.Date=$(DATE)"
 
 # Build targets
 build:

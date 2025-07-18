@@ -8,5 +8,6 @@ func GetAllCommands() []*cli.Command {
 		ValidateCommand(),
 		IntrospectCommand(),
 		SyncCommand(),
+		VersionCommand(),
 	}
 }

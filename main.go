@@ -7,18 +7,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// Version information (set during build)
-var (
-	version = "dev"
-	commit  = "unknown"
-	date    = "unknown"
-)
-
 func main() {
 	app := &cli.App{
 		Name:     "schema-manager",
 		Usage:    "Schema-first migration tool for Go applications (Prisma schema only)",
-		Version:  version,
+		Version:  cmd.Version,
 		Commands: cmd.GetAllCommands(),
 	}
 	app.Run(os.Args)
