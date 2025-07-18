@@ -115,7 +115,7 @@ func main() {
 							if err != nil {
 								return cli.Exit("Failed to parse current schema from migrations: "+err.Error(), 1)
 							}
-							
+
 							// Debug: Print current schema
 							fmt.Printf("Current schema has %d models, %d enums\n", len(currentSchema.Models), len(currentSchema.Enums))
 							for _, m := range currentSchema.Models {
@@ -124,7 +124,7 @@ func main() {
 							for _, e := range currentSchema.Enums {
 								fmt.Printf("  - Enum: %s\n", e.Name)
 							}
-							
+
 							fmt.Printf("Target schema has %d models, %d enums\n", len(targetSchema.Models), len(targetSchema.Enums))
 							for _, m := range targetSchema.Models {
 								fmt.Printf("  - Model: %s (table: %s)\n", m.Name, m.TableName)
@@ -132,12 +132,12 @@ func main() {
 							for _, e := range targetSchema.Enums {
 								fmt.Printf("  - Enum: %s\n", e.Name)
 							}
-							
+
 							diff := schema.DiffSchemas(currentSchema, targetSchema)
-							fmt.Printf("Diff: %d models added, %d models removed, %d enums added, %d enums removed\n", 
-								len(diff.ModelsAdded), len(diff.ModelsRemoved), len(diff.EnumsAdded), len(diff.EnumsRemoved))
-							
-							if diff == nil || (len(diff.ModelsAdded) == 0 && len(diff.EnumsAdded) == 0) {
+							fmt.Printf("Diff: %d models added, %d models removed, %d enums added, %d enums removed, %d fields added, %d fields removed\n",
+								len(diff.ModelsAdded), len(diff.ModelsRemoved), len(diff.EnumsAdded), len(diff.EnumsRemoved), len(diff.FieldsAdded), len(diff.FieldsRemoved))
+
+							if diff == nil || (len(diff.ModelsAdded) == 0 && len(diff.EnumsAdded) == 0 && len(diff.FieldsAdded) == 0 && len(diff.FieldsRemoved) == 0) {
 								fmt.Println("No changes detected.")
 								return nil
 							}

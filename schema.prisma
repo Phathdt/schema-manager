@@ -8,29 +8,16 @@ generator client {
   output   = "./migrations"
 }
 
-// enum UserRole {
-//   ADMIN
-//   USER
-//   MODERATOR
-// }
-
-model User {
+model Product {
   id        Int      @id @default(autoincrement())
   name      String
-  email     String   @unique
+  slug      String   @unique
+  description String?
+  price     Int
+  status    String
+  category  String   @default("general")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("users")
+  @@map("products")
 }
-
-// model UserRoleAssignment {
-//   userId    Int      @map("user_id")
-//   role      UserRole @map("role")
-//   grantedAt DateTime @default(now()) @map("granted_at")
-
-//   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-//   @@id([userId, role])
-//   @@map("user_roles")
-// }

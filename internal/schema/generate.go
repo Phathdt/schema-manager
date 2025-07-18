@@ -14,10 +14,25 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 		stmts = append(stmts, wrapGooseStatement(enumStmt))
 	}
 
+	// Handle field additions
+	for _, fieldChange := range diff.FieldsAdded {
+		stmt := generateAddColumnSQL(fieldChange)
+		if stmt != "" {
+			stmts = append(stmts, wrapGooseStatement(stmt))
+		}
+	}
+
+	// Handle field removals
+	for _, fieldChange := range diff.FieldsRemoved {
+		stmt := generateDropColumnSQL(fieldChange)
+		if stmt != "" {
+			stmts = append(stmts, wrapGooseStatement(stmt))
+		}
+	}
+
 	for _, m := range diff.ModelsAdded {
 		cols := []string{}
 		pkCols := []string{}
-		uniqueCols := []string{}
 		indexes := []string{}
 		uniqueIndexes := []string{}
 		foreignKeys := []string{}
@@ -74,7 +89,7 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 			if isPrimary && isAutoIncrement && len(compositePK) == 0 {
 				col = f.ColumnName + " SERIAL PRIMARY KEY"
 			} else {
-				col = f.ColumnName + " " + goTypeToSQLType(f.Type)
+				col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement)
 				if defaultVal != "" {
 					col += " DEFAULT " + defaultVal
 				}
@@ -87,7 +102,8 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 				pkCols = append(pkCols, f.ColumnName)
 			}
 			if isUnique {
-				uniqueCols = append(uniqueCols, f.ColumnName)
+				idxName := "idx_uniq_" + m.TableName + "_" + f.ColumnName
+				uniqueIndexes = append(uniqueIndexes, "CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+f.ColumnName+");")
 			}
 			cols = append(cols, col)
 		}
@@ -196,11 +212,6 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 			cols = append(cols, "PRIMARY KEY ("+strings.Join(pkCols, ", ")+")")
 		}
 
-		// UNIQUE constraints
-		for _, ucol := range uniqueCols {
-			cols = append(cols, "UNIQUE ("+ucol+")")
-		}
-
 		// Foreign key constraints
 		for _, fk := range foreignKeys {
 			cols = append(cols, fk)
@@ -237,6 +248,22 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 		stmts = append(stmts, wrapGooseStatement("DROP TYPE IF EXISTS "+e.Name+";"))
 	}
 
+	// For fields added, we need to drop them in down migration
+	for _, fieldChange := range diff.FieldsAdded {
+		stmt := generateDropColumnSQL(fieldChange)
+		if stmt != "" {
+			stmts = append(stmts, wrapGooseStatement(stmt))
+		}
+	}
+
+	// For fields removed, we need to add them back in down migration
+	for _, fieldChange := range diff.FieldsRemoved {
+		stmt := generateAddColumnSQL(fieldChange)
+		if stmt != "" {
+			stmts = append(stmts, wrapGooseStatement(stmt))
+		}
+	}
+
 	// For enums removed, we need to recreate them in down migration
 	for _, e := range diff.EnumsRemoved {
 		enumStmt := generateEnumSQL(e)
@@ -247,7 +274,6 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 	for _, m := range diff.ModelsRemoved {
 		cols := []string{}
 		pkCols := []string{}
-		uniqueCols := []string{}
 		indexes := []string{}
 		uniqueIndexes := []string{}
 		for _, f := range m.Fields {
@@ -278,7 +304,7 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 			if isPrimary && isAutoIncrement {
 				col = f.ColumnName + " SERIAL PRIMARY KEY"
 			} else {
-				col = f.ColumnName + " " + goTypeToSQLType(f.Type)
+				col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement)
 				if defaultVal != "" {
 					col += " DEFAULT " + defaultVal
 				}
@@ -291,7 +317,8 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 				pkCols = append(pkCols, f.ColumnName)
 			}
 			if isUnique {
-				uniqueCols = append(uniqueCols, f.ColumnName)
+				idxName := "idx_uniq_" + m.TableName + "_" + f.ColumnName
+				uniqueIndexes = append(uniqueIndexes, "CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+f.ColumnName+");")
 			}
 			cols = append(cols, col)
 		}
@@ -316,10 +343,6 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 		if len(pkCols) > 0 {
 			cols = append(cols, "PRIMARY KEY ("+strings.Join(pkCols, ", ")+")")
 		}
-		// UNIQUE
-		for _, ucol := range uniqueCols {
-			cols = append(cols, "UNIQUE ("+ucol+")")
-		}
 		createTable := "CREATE TABLE " + m.TableName + " (\n  " + strings.Join(cols, ",\n  ") + "\n);"
 		stmts = append(stmts, wrapGooseStatement(createTable))
 		for _, idx := range uniqueIndexes {
@@ -332,9 +355,12 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 	return strings.Join(stmts, "\n\n")
 }
 
-func goTypeToSQLType(t string) string {
+func goTypeToSQLType(t string, isAutoIncrement bool) string {
 	switch t {
 	case "Int":
+		if isAutoIncrement {
+			return "SERIAL"
+		}
 		return "INTEGER"
 	case "String":
 		return "VARCHAR(255)"
@@ -430,8 +456,97 @@ func parseDefaultValue(val string, typ string) string {
 		}
 		return "FALSE"
 	default:
+		if v == "autoincrement()" {
+			return "" // This should be handled by SERIAL, so we return empty for default
+		}
 		return v
 	}
+}
+
+func generateAddColumnSQL(fieldChange *FieldChange) string {
+	f := fieldChange.Field
+
+	// Skip relation fields that don't have actual columns (array types and fields with @relation)
+	if f.IsArray {
+		return ""
+	}
+	hasRelationAttr := false
+	for _, attr := range f.Attributes {
+		if attr.Name == "relation" {
+			hasRelationAttr = true
+			break
+		}
+	}
+	if hasRelationAttr {
+		return ""
+	}
+
+	isPrimary := false
+	isUnique := false
+	isNotNull := !f.IsOptional
+	var defaultVal string
+	isAutoIncrement := false
+
+	for _, attr := range f.Attributes {
+		switch attr.Name {
+		case "id":
+			isPrimary = true
+		case "unique":
+			isUnique = true
+		case "default":
+			if len(attr.Args) > 0 {
+				if attr.Args[0] == "autoincrement()" && f.Type == "Int" {
+					isAutoIncrement = true
+				} else {
+					defaultVal = parseDefaultValue(attr.Args[0], f.Type)
+				}
+			}
+		}
+	}
+
+	var col string
+	if isPrimary && isAutoIncrement {
+		col = f.ColumnName + " SERIAL PRIMARY KEY"
+	} else {
+		col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement)
+		if defaultVal != "" {
+			col += " DEFAULT " + defaultVal
+		}
+		if isNotNull {
+			col += " NOT NULL"
+		}
+	}
+
+	stmt := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s;", fieldChange.ModelName, col)
+
+	// Handle unique constraint separately
+	if isUnique {
+		idxName := "idx_uniq_" + fieldChange.ModelName + "_" + f.ColumnName
+		stmt += fmt.Sprintf("\nCREATE UNIQUE INDEX %s ON %s(%s);", idxName, fieldChange.ModelName, f.ColumnName)
+	}
+
+	return stmt
+}
+
+func generateDropColumnSQL(fieldChange *FieldChange) string {
+	f := fieldChange.Field
+
+	// Skip relation fields that don't have actual columns
+	if f.IsArray {
+		return ""
+	}
+	hasRelationAttr := false
+	for _, attr := range f.Attributes {
+		if attr.Name == "relation" {
+			hasRelationAttr = true
+			break
+		}
+	}
+	if hasRelationAttr {
+		return ""
+	}
+
+	return fmt.Sprintf("ALTER TABLE %s DROP COLUMN IF EXISTS %s;", fieldChange.ModelName, f.ColumnName)
 }
 
 func parseIndexFields(args []string, fields []*Field) []string {

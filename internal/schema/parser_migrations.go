@@ -30,6 +30,8 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 	enumRe := regexp.MustCompile(`(?i)CREATE TYPE ([a-zA-Z0-9_]+) AS ENUM \(([^;]*)\);`)
 	dropTableRe := regexp.MustCompile(`(?i)DROP TABLE IF EXISTS ([a-zA-Z0-9_]+);`)
 	dropTypeRe := regexp.MustCompile(`(?i)DROP TYPE IF EXISTS ([a-zA-Z0-9_]+);`)
+	addColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) ADD COLUMN ([a-zA-Z0-9_]+) ([^;]+);`)
+	dropColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) DROP COLUMN IF EXISTS ([a-zA-Z0-9_]+);`)
 	colRe := regexp.MustCompile(`(?m)^\s*([a-zA-Z0-9_]+) ([^,\n]+)`) // name type ...
 
 	for _, fname := range migrationFiles {
@@ -121,6 +123,46 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 				for _, match := range matches {
 					enumName := match[1]
 					delete(enums, enumName)
+				}
+			}
+
+			// Handle ALTER TABLE ADD COLUMN
+			if strings.Contains(stmtBlock, "ALTER TABLE") && strings.Contains(stmtBlock, "ADD COLUMN") {
+				matches := addColumnRe.FindAllStringSubmatch(stmtBlock, -1)
+				for _, match := range matches {
+					tableName := match[1]
+					columnName := match[2]
+					columnType := strings.Fields(match[3])[0] // Get the first word as type
+
+					// Find or create the model for this table
+					if model, exists := tables[tableName]; exists {
+						// Add the new field to the existing model
+						model.Fields = append(model.Fields, &Field{
+							Name:       columnName,
+							ColumnName: columnName,
+							Type:       columnType,
+						})
+					}
+				}
+			}
+
+			// Handle ALTER TABLE DROP COLUMN
+			if strings.Contains(stmtBlock, "ALTER TABLE") && strings.Contains(stmtBlock, "DROP COLUMN") {
+				matches := dropColumnRe.FindAllStringSubmatch(stmtBlock, -1)
+				for _, match := range matches {
+					tableName := match[1]
+					columnName := match[2]
+
+					// Find the model and remove the field
+					if model, exists := tables[tableName]; exists {
+						newFields := []*Field{}
+						for _, field := range model.Fields {
+							if field.ColumnName != columnName {
+								newFields = append(newFields, field)
+							}
+						}
+						model.Fields = newFields
+					}
 				}
 			}
 		}
