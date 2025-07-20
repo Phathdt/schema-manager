@@ -10,6 +10,7 @@ Schema Manager is a **focused** tool that compares your Prisma schema with exist
 - **Migration Generation**: Generate only missing migration files
 - **Goose Integration**: Let Goose handle migration execution
 - **Clean Architecture**: Focused on core functionality
+- **Make Integration**: Streamlined development and release workflow
 
 ## Philosophy
 
@@ -66,9 +67,27 @@ model Product {
 
 ## Installation
 
+### Option 1: Install from GitHub (Recommended)
+
 ```bash
 go install github.com/phathdt/schema-manager@latest
 ```
+
+### Option 2: Build from Source
+
+```bash
+git clone https://github.com/phathdt/schema-manager
+cd schema-manager
+make build
+```
+
+### Option 3: Download Pre-built Binaries
+
+Download from [GitHub Releases](https://github.com/phathdt/schema-manager/releases/latest):
+- Linux AMD64: `schema-manager-linux-amd64`
+- macOS Intel: `schema-manager-darwin-amd64`
+- macOS Apple Silicon: `schema-manager-darwin-arm64`
+- Windows: `schema-manager-windows-amd64.exe`
 
 ## CLI Commands
 
@@ -86,6 +105,9 @@ schema-manager introspect --output schema.prisma
 
 # Sync database and schema.prisma (bi-directional)
 schema-manager sync
+
+# Check version
+schema-manager version
 ```
 
 ### Goose Integration
@@ -99,6 +121,67 @@ goose down
 
 # Check migration status (using Goose)
 goose status
+```
+
+## Development Workflow
+
+### Using Make Commands
+
+Schema Manager includes a comprehensive Makefile for streamlined development:
+
+#### **Development Commands**
+```bash
+# Build the CLI binary
+make build
+
+# Run the application
+make run
+
+# Run tests
+make test
+
+# Clean up binaries
+make clean
+
+# Show current version info
+make version
+```
+
+#### **Release Commands**
+```bash
+# Build for multiple platforms
+make build-release
+
+# Complete release process (test + build + tag + push)
+make release VERSION=v1.0.0
+
+# Quick release
+make quick-release VERSION=v1.0.0
+
+# Create and push git tag
+make tag VERSION=v1.0.0
+make push-tags
+```
+
+#### **Git Commands**
+```bash
+# Commit and push changes
+make commit MSG="Add new feature"
+
+# Check if working directory is clean
+make check-clean
+
+# List all tags
+make list-tags
+
+# Delete a tag
+make delete-tag VERSION=v1.0.0
+```
+
+#### **Help**
+```bash
+# Show all available commands
+make help
 ```
 
 ## Workflow
@@ -519,7 +602,7 @@ goose status
 
 ## Roadmap
 
-### ✅ **Completed Features**
+### ✅ **Completed Features (v0.1.3)**
 
 #### **Core Migration System**
 - [x] Parse Prisma schema file (schema.prisma)
@@ -539,50 +622,51 @@ goose status
 - [x] `generate` command - Generate migration from schema changes
 - [x] `introspect` command - Import database structure to schema.prisma
 - [x] `sync` command - Bi-directional schema synchronization
+- [x] `version` command - Show version information
 
 #### **Goose Integration**
 - [x] **Compatible approach** - All migrations use Goose-compatible format
 - [x] **Conditional SQL** - Safe migrations with IF NOT EXISTS
 - [x] **Single source of truth** - Goose handles migration execution and tracking
 
-### 🎯 **Current Focus**
+#### **Developer Experience**
+- [x] **Make integration** - Comprehensive Makefile for development
+- [x] **Multi-platform builds** - Linux, macOS, Windows support
+- [x] **Version management** - Automated versioning and releases
+- [x] **Clean CLI interface** - Simple, focused commands
 
-#### **Simplified Tool Philosophy**
-- **Schema Manager**: Compare schemas and generate migrations
-- **Goose**: Execute migrations on database
-- **Unix Philosophy**: Do one thing and do it well
+### 🎯 **Current Focus (v0.2.x)**
 
-#### **Supported Workflows**
-1. **New Project**: Edit schema → Generate migration → Apply with Goose
-2. **Existing Database**: Introspect → Baseline migration → Future development
-3. **Schema Out of Sync**: Sync check → Update schema or generate migration
-4. **Team Collaboration**: Pull → Apply migrations → Make changes → Generate → Commit
+#### **Enhanced Developer Experience**
+- [ ] **Interactive CLI** - Better prompts and confirmations
+- [ ] **Configuration file** - Project-specific settings (.schema-manager.yaml)
+- [ ] **Better error handling** - More detailed error messages and validation
+- [ ] **Comprehensive testing** - Unit and integration tests
 
 ### 🚀 **Future Enhancements**
 
-#### **Phase 1: Core Improvements**
+#### **Phase 1: Core Improvements (v0.3.x)**
 - [ ] **Enhanced type mapping** - More PostgreSQL data types support
 - [ ] **Relationship detection** - Foreign key constraints in introspection
 - [ ] **Index optimization** - Better index handling in migrations
-- [ ] **Error handling** - More detailed error messages and validation
+- [ ] **Migration templates** - Custom migration templates
 
-#### **Phase 2: Advanced Features**
-- [ ] **Multi-database support** - MySQL, SQLite support
+#### **Phase 2: Multi-Database Support (v0.4.x)**
+- [ ] **MySQL support** - Complete MySQL integration
+- [ ] **SQLite support** - SQLite database support
+- [ ] **Database-specific optimizations** - Platform-specific SQL generation
+
+#### **Phase 3: Advanced Features (v0.5.x)**
 - [ ] **Schema versioning** - Track schema changes over time
 - [ ] **Migration rollback** - Generate reverse migrations
 - [ ] **Performance optimization** - Faster introspection for large databases
-
-#### **Phase 3: Developer Experience**
-- [ ] **Interactive CLI** - Better prompts and confirmations
-- [ ] **Configuration file** - Project-specific settings
-- [ ] **Migration templates** - Custom migration templates
-- [ ] **Integration tests** - Automated testing with real databases
-
-#### **Phase 4: Advanced Sync**
-- [ ] **Column modifications** - Handle column type changes in sync
 - [ ] **Data migration** - Handle data transformations
+
+#### **Phase 4: Enterprise Features (v1.0.x)**
+- [ ] **Column modifications** - Handle column type changes in sync
 - [ ] **Conflict resolution** - Better handling of schema conflicts
 - [ ] **Batch operations** - Optimize large schema synchronizations
+- [ ] **CI/CD integration** - Better automation support
 
 ### 🎨 **Design Decisions**
 
@@ -633,26 +717,78 @@ goose status
 ```bash
 git clone https://github.com/phathdt/schema-manager
 cd schema-manager
+
+# Install dependencies
 go mod download
-go build -o schema-manager main.go
+
+# Build the project
+make build
+
+# Run tests
+make test
+
+# Check available commands
+make help
+```
+
+### Development Workflow
+
+```bash
+# 1. Make changes to code
+vim cmd/generate.go
+
+# 2. Test your changes
+make test
+make build
+./schema-manager validate
+
+# 3. Commit changes
+make commit MSG="Improve generate command"
+
+# 4. Create release (maintainers only)
+make quick-release VERSION=v0.2.0
 ```
 
 ### Testing
 
 ```bash
-# Build and test
-go build -o schema-manager main.go
+# Build and test locally
+make build
 ./schema-manager validate
 ./schema-manager generate --name "test_migration"
+
+# Run all tests
+make test
+
+# Test release build
+make build-release
 ```
 
 ### Contributing Guidelines
 
 1. **Focus on simplicity** - Keep the Unix philosophy
-2. **Maintain Goose compatibility** - Don't break existing workflows
-3. **Add comprehensive tests** - Test with real databases
-4. **Document new features** - Update README and examples
-5. **Follow Go best practices** - Clean, readable code
+2. **Use Make commands** - Leverage the provided Makefile
+3. **Maintain Goose compatibility** - Don't break existing workflows
+4. **Add comprehensive tests** - Test with real databases
+5. **Document new features** - Update README and examples
+6. **Follow Go best practices** - Clean, readable code
+7. **Use semantic versioning** - Follow semver for releases
+
+### Release Process
+
+For maintainers releasing new versions:
+
+```bash
+# Quick release (most common)
+make quick-release VERSION=v0.2.0
+
+# Full release with binaries
+make release VERSION=v0.2.0
+
+# Check release status
+make list-tags
+make version
+```
 
 ## License
 
