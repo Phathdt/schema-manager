@@ -27,6 +27,7 @@ type ColumnInfo struct {
 	IsAutoIncrement bool
 	IsPrimaryKey    bool
 	IsUnique        bool
+	IsCompositePK   bool
 }
 
 type IndexInfo struct {
@@ -199,6 +200,19 @@ func introspectDatabase(db *sql.DB) ([]TableInfo, error) {
 		}
 		table.Constraints = constraints
 
+		// Get primary key columns for composite key detection
+		primaryKeys, err := getTablePrimaryKeys(db, tableName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get primary keys for table %s: %w", tableName, err)
+		}
+
+		// Mark composite primary key flag
+		for i := range table.Columns {
+			if table.Columns[i].IsPrimaryKey {
+				table.Columns[i].IsCompositePK = len(primaryKeys) > 1
+			}
+		}
+
 		tables = append(tables, table)
 	}
 
@@ -361,6 +375,35 @@ func isColumnUnique(db *sql.DB, tableName, columnName string) (bool, error) {
 	return exists, err
 }
 
+func getTablePrimaryKeys(db *sql.DB, tableName string) ([]string, error) {
+	query := `
+		SELECT ccu.column_name
+		FROM information_schema.table_constraints tc
+		JOIN information_schema.constraint_column_usage ccu
+			ON tc.constraint_name = ccu.constraint_name
+		WHERE tc.table_name = $1
+		AND tc.constraint_type = 'PRIMARY KEY'
+		ORDER BY ccu.column_name
+	`
+
+	rows, err := db.Query(query, tableName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var primaryKeys []string
+	for rows.Next() {
+		var columnName string
+		if err := rows.Scan(&columnName); err != nil {
+			return nil, err
+		}
+		primaryKeys = append(primaryKeys, columnName)
+	}
+
+	return primaryKeys, nil
+}
+
 func generatePrismaSchema(tables []TableInfo) string {
 	var schema strings.Builder
 
@@ -379,6 +422,9 @@ generator client {
 	for _, table := range tables {
 		schema.WriteString(fmt.Sprintf("model %s {\n", toPascalCase(table.TableName)))
 
+		// Collect primary key fields for composite primary key
+		var primaryKeyFields []string
+
 		for _, col := range table.Columns {
 			schema.WriteString(fmt.Sprintf("  %s", toCamelCase(col.ColumnName)))
 
@@ -389,7 +435,8 @@ generator client {
 			schema.WriteString(fmt.Sprintf(" %s", prismaType))
 
 			var attributes []string
-			if col.IsPrimaryKey {
+			// Only add @id for single primary keys, not composite ones
+			if col.IsPrimaryKey && !col.IsCompositePK {
 				attributes = append(attributes, "@id")
 			}
 			if col.IsAutoIncrement {
@@ -407,9 +454,21 @@ generator client {
 			}
 
 			schema.WriteString("\n")
+
+			// Collect primary key fields for composite key
+			if col.IsPrimaryKey {
+				primaryKeyFields = append(primaryKeyFields, toCamelCase(col.ColumnName))
+			}
 		}
 
-		schema.WriteString(fmt.Sprintf("\n  @@map(\"%s\")\n", table.TableName))
+		schema.WriteString("\n")
+
+		// Add composite primary key if there are multiple primary key fields
+		if len(primaryKeyFields) > 1 {
+			schema.WriteString(fmt.Sprintf("  @@id([%s])\n", strings.Join(primaryKeyFields, ", ")))
+		}
+
+		schema.WriteString(fmt.Sprintf("  @@map(\"%s\")\n", table.TableName))
 		schema.WriteString("}\n\n")
 	}
 
@@ -541,7 +600,29 @@ func toPascalCase(s string) string {
 	for i, part := range parts {
 		parts[i] = strings.Title(part)
 	}
-	return strings.Join(parts, "")
+	result := strings.Join(parts, "")
+	return singularize(result)
+}
+
+func singularize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+
+	// Handle common plural patterns
+	switch {
+	case strings.HasSuffix(s, "ies"):
+		// categories -> category, companies -> company
+		return s[:len(s)-3] + "y"
+	case strings.HasSuffix(s, "ses"):
+		// addresses -> address, processes -> process
+		return s[:len(s)-2]
+	case strings.HasSuffix(s, "s") && !strings.HasSuffix(s, "ss"):
+		// users -> user, wallets -> wallet (but not address -> addres)
+		return s[:len(s)-1]
+	default:
+		return s
+	}
 }
 
 func toCamelCase(s string) string {
