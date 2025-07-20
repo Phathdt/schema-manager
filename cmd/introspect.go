@@ -67,15 +67,11 @@ func runIntrospect(outputFile string) error {
 		return fmt.Errorf("DATABASE_URL environment variable is required")
 	}
 
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := connectWithSSLFallback(databaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database: %w", err)
-	}
 
 	fmt.Println("✅ Connected to database successfully")
 
@@ -114,6 +110,50 @@ func runIntrospect(outputFile string) error {
 	fmt.Println("🚀 Run 'goose up' to apply the baseline migration")
 
 	return nil
+}
+
+func connectWithSSLFallback(databaseURL string) (*sql.DB, error) {
+	// First, try to connect with the original URL
+	db, err := sql.Open("postgres", databaseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Ping(); err != nil {
+		db.Close()
+
+		// Check if it's an SSL-related error
+		if strings.Contains(err.Error(), "SSL is not enabled") || strings.Contains(err.Error(), "ssl") {
+			fmt.Println("⚠️  SSL connection failed, retrying with SSL disabled...")
+
+			// Add sslmode=disable if not present
+			fallbackURL := databaseURL
+			if !strings.Contains(databaseURL, "sslmode=") {
+				separator := "?"
+				if strings.Contains(databaseURL, "?") {
+					separator = "&"
+				}
+				fallbackURL = databaseURL + separator + "sslmode=disable"
+			}
+
+			// Try connecting with SSL disabled
+			db, err = sql.Open("postgres", fallbackURL)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := db.Ping(); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("connection failed even with SSL disabled. Please check your database connection settings: %w", err)
+			}
+
+			fmt.Println("✅ Connected successfully with SSL disabled")
+		} else {
+			return nil, fmt.Errorf("database connection failed: %w", err)
+		}
+	}
+
+	return db, nil
 }
 
 func introspectDatabase(db *sql.DB) ([]TableInfo, error) {

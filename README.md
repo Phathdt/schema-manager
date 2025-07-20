@@ -359,6 +359,16 @@ schema-manager introspect --output schema.prisma
 - Generates schema.prisma from database structure
 - Creates conditional baseline migration (Goose-compatible)
 - Uses IF NOT EXISTS for safe migration execution
+- **Automatically handles SSL connection issues** - Falls back to `sslmode=disable` if SSL connection fails
+
+**SSL Configuration:**
+```bash
+# For local development (most common)
+export DATABASE_URL="postgresql://user:password@localhost/dbname?sslmode=disable"
+
+# For production with SSL
+export DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+```
 
 ### `sync`
 
@@ -377,6 +387,7 @@ schema-manager sync --generate-migration # Generate migration from schema
 - **If schema.prisma has more**: Generates migration to update database
 - **Goose-compatible**: All migrations use conditional SQL (IF NOT EXISTS)
 - Interactive mode to confirm changes
+- **Automatically handles SSL connection issues** - Falls back to `sslmode=disable` if SSL connection fails
 
 ## Best Practices
 
@@ -446,12 +457,30 @@ git commit -m "Add product categories"
    schema-manager introspect --output schema.prisma
    ```
 
-5. **Table Already Exists (After Sync)**
+5. **SSL Connection Issues**
+   **Problem**: Error message "SSL is not enabled on the server"
+
+   **Solution**: Schema Manager automatically handles SSL connection issues by falling back to `sslmode=disable`. However, you can also explicitly set it:
+
+   ```bash
+   # For local development (SSL disabled)
+   export DATABASE_URL="postgresql://user:password@localhost/dbname?sslmode=disable"
+
+   # For production (SSL required)
+   export DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+
+   # Common SSL modes:
+   # - sslmode=disable    (no SSL)
+   # - sslmode=require    (SSL required)
+   # - sslmode=prefer     (SSL preferred, fallback to non-SSL)
+   ```
+
+6. **Table Already Exists (After Sync)**
    - Conditional migrations prevent this issue
    - All migrations use IF NOT EXISTS
    - Safe to run goose up multiple times
 
-6. **Schema Out of Sync**
+7. **Schema Out of Sync**
    ```bash
    # Check differences
    schema-manager sync --check

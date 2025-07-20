@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -187,15 +186,11 @@ func compareSchemas() (*SchemaDiff, error) {
 		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
 	}
 
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := connectWithSSLFallback(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
 
 	dbTables, err := introspectDatabase(db)
 	if err != nil {
