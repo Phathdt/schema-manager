@@ -89,7 +89,7 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 			if isPrimary && isAutoIncrement && len(compositePK) == 0 {
 				col = f.ColumnName + " SERIAL PRIMARY KEY"
 			} else {
-				col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement)
+				col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement, f.Attributes)
 				if defaultVal != "" {
 					col += " DEFAULT " + defaultVal
 				}
@@ -304,7 +304,7 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 			if isPrimary && isAutoIncrement {
 				col = f.ColumnName + " SERIAL PRIMARY KEY"
 			} else {
-				col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement)
+				col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement, f.Attributes)
 				if defaultVal != "" {
 					col += " DEFAULT " + defaultVal
 				}
@@ -355,7 +355,20 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 	return strings.Join(stmts, "\n\n")
 }
 
-func goTypeToSQLType(t string, isAutoIncrement bool) string {
+func goTypeToSQLType(t string, isAutoIncrement bool, attributes []*FieldAttribute) string {
+	// Check for @db type attributes first
+	for _, attr := range attributes {
+		if strings.HasPrefix(attr.Name, "db.") {
+			dbType := strings.TrimPrefix(attr.Name, "db.")
+			if dbType == "VarChar" && len(attr.Args) > 0 {
+				return "VARCHAR(" + attr.Args[0] + ")"
+			}
+			if dbType == "Text" {
+				return "TEXT"
+			}
+		}
+	}
+
 	switch t {
 	case "Int":
 		if isAutoIncrement {
@@ -363,7 +376,7 @@ func goTypeToSQLType(t string, isAutoIncrement bool) string {
 		}
 		return "INTEGER"
 	case "String":
-		return "VARCHAR(255)"
+		return "TEXT"
 	case "DateTime":
 		return "TIMESTAMP"
 	case "Boolean":
@@ -508,7 +521,7 @@ func generateAddColumnSQL(fieldChange *FieldChange) string {
 	if isPrimary && isAutoIncrement {
 		col = f.ColumnName + " SERIAL PRIMARY KEY"
 	} else {
-		col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement)
+		col = f.ColumnName + " " + goTypeToSQLType(f.Type, isAutoIncrement, f.Attributes)
 		if defaultVal != "" {
 			col += " DEFAULT " + defaultVal
 		}

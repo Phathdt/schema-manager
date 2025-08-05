@@ -287,7 +287,7 @@ func GenerateMigrationSQL(diff *PrismaDiff) (string, string) {
 		var downStmts []string
 		for _, f := range m.Fields {
 			isSerial := false
-			col := f.ColumnName + " " + goTypeToSQLType(f.Type)
+			col := f.ColumnName + " " + goTypeToSQLTypeWithAttributes(f.Type, f.Attributes)
 			isUnique := false
 			isPrimary := false
 			for _, attr := range f.Attributes {
@@ -347,7 +347,7 @@ func GenerateMigrationSQL(diff *PrismaDiff) (string, string) {
 		var downStmts []string
 		for _, f := range m.Fields {
 			isSerial := false
-			col := f.ColumnName + " " + goTypeToSQLType(f.Type)
+			col := f.ColumnName + " " + goTypeToSQLTypeWithAttributes(f.Type, f.Attributes)
 			isUnique := false
 			isPrimary := false
 			for _, attr := range f.Attributes {
@@ -412,7 +412,7 @@ func goTypeToSQLType(t string) string {
 	case "Int":
 		return "INTEGER"
 	case "String":
-		return "VARCHAR(255)"
+		return "TEXT"
 	case "DateTime":
 		return "TIMESTAMP"
 	case "Boolean":
@@ -422,6 +422,23 @@ func goTypeToSQLType(t string) string {
 	default:
 		return "TEXT"
 	}
+}
+
+func goTypeToSQLTypeWithAttributes(t string, attributes []*FieldAttribute) string {
+	// Check for @db type attributes first
+	for _, attr := range attributes {
+		if strings.HasPrefix(attr.Name, "db.") {
+			dbType := strings.TrimPrefix(attr.Name, "db.")
+			if dbType == "VarChar" && len(attr.Args) > 0 {
+				return "VARCHAR(" + attr.Args[0] + ")"
+			}
+			if dbType == "Text" {
+				return "TEXT"
+			}
+		}
+	}
+
+	return goTypeToSQLType(t)
 }
 
 func parseStringValue(line string) string {
