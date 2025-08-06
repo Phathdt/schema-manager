@@ -375,6 +375,8 @@ func goTypeToSQLType(t string, isAutoIncrement bool, attributes []*FieldAttribut
 			return "SERIAL"
 		}
 		return "INTEGER"
+	case "BigInt":
+		return "BIGINT"
 	case "String":
 		return "TEXT"
 	case "DateTime":

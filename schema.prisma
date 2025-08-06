@@ -10,6 +10,7 @@ generator client {
 
 model Product {
   id        Int      @id @default(autoincrement())
+  productId BigInt   @unique
   name      String
   slug      String   @unique
   description String?

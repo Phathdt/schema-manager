@@ -411,6 +411,8 @@ func goTypeToSQLType(t string) string {
 	switch t {
 	case "Int":
 		return "INTEGER"
+	case "BigInt":
+		return "BIGINT"
 	case "String":
 		return "TEXT"
 	case "DateTime":
