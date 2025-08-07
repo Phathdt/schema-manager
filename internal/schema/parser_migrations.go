@@ -82,7 +82,19 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 						}
 						fname := colMatch[1]
 						ftype := strings.Fields(colMatch[2])[0]
-						model.Fields = append(model.Fields, &Field{Name: fname, ColumnName: fname, Type: ftype})
+
+						// Check if field is nullable by looking for NOT NULL constraint or PRIMARY KEY
+						// In SQL, columns are nullable by default unless NOT NULL is specified
+						// PRIMARY KEY also implies NOT NULL
+						columnDef := strings.ToUpper(colMatch[2])
+						isOptional := !strings.Contains(columnDef, "NOT NULL") && !strings.Contains(columnDef, "PRIMARY KEY")
+
+						model.Fields = append(model.Fields, &Field{
+							Name:       fname,
+							ColumnName: fname,
+							Type:       ftype,
+							IsOptional: isOptional,
+						})
 					}
 					tables[table] = model
 				}
@@ -132,7 +144,12 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 				for _, match := range matches {
 					tableName := match[1]
 					columnName := match[2]
-					columnType := strings.Fields(match[3])[0] // Get the first word as type
+					columnDef := match[3]
+					columnType := strings.Fields(columnDef)[0] // Get the first word as type
+
+					// Check if field is nullable by looking for NOT NULL constraint or PRIMARY KEY
+					columnDefUpper := strings.ToUpper(columnDef)
+					isOptional := !strings.Contains(columnDefUpper, "NOT NULL") && !strings.Contains(columnDefUpper, "PRIMARY KEY")
 
 					// Find or create the model for this table
 					if model, exists := tables[tableName]; exists {
@@ -141,6 +158,7 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 							Name:       columnName,
 							ColumnName: columnName,
 							Type:       columnType,
+							IsOptional: isOptional,
 						})
 					}
 				}

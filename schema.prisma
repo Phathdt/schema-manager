@@ -9,16 +9,16 @@ generator client {
 }
 
 model Product {
-  id        Int      @id @default(autoincrement())
-  productId BigInt   @unique
-  name      String
-  slug      String   @unique
+  id          Int      @id @default(autoincrement())
+  productId   String   @unique
+  name        String
+  slug        String   @unique
   description String?
-  price     Int
-  status    String
-  category  String   @default("general")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  price       Int
+  status      String
+  category    String   @default("general")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("products")
 }

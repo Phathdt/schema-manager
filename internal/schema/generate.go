@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -26,7 +27,21 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 	for _, fieldChange := range diff.FieldsRemoved {
 		stmt := generateDropColumnSQL(fieldChange)
 		if stmt != "" {
-			stmts = append(stmts, wrapGooseStatement(stmt))
+			warning := fmt.Sprintf("IRREVERSIBLE: Dropping column %s.%s - all data in this column will be lost!",
+				fieldChange.ModelName, fieldChange.Field.ColumnName)
+			stmts = append(stmts, wrapGooseStatementWithWarning(stmt, warning))
+		}
+	}
+
+	// Handle field modifications
+	for _, fieldChange := range diff.FieldsModified {
+		stmt, warning := generateModifyColumnSQLWithWarning(fieldChange)
+		if stmt != "" {
+			if warning != "" {
+				stmts = append(stmts, wrapGooseStatementWithWarning(stmt, warning))
+			} else {
+				stmts = append(stmts, wrapGooseStatement(stmt))
+			}
 		}
 	}
 
@@ -227,13 +242,18 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 		}
 	}
 	for _, m := range diff.ModelsRemoved {
-		stmts = append(stmts, wrapGooseStatement("DROP TABLE IF EXISTS "+m.TableName+";"))
+		warning := fmt.Sprintf("IRREVERSIBLE: Dropping table %s - all data will be lost!", m.TableName)
+		stmts = append(stmts, wrapGooseStatementWithWarning("DROP TABLE IF EXISTS "+m.TableName+";", warning))
 	}
 	return strings.Join(stmts, "\n\n")
 }
 
 func wrapGooseStatement(sql string) string {
 	return "-- +goose StatementBegin\n" + sql + "\n-- +goose StatementEnd"
+}
+
+func wrapGooseStatementWithWarning(sql string, warning string) string {
+	return "-- +goose StatementBegin\n-- WARNING: " + warning + "\n" + sql + "\n-- +goose StatementEnd"
 }
 
 func GenerateDownMigrationSQL(diff *SchemaDiff) string {
@@ -259,6 +279,14 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 	// For fields removed, we need to add them back in down migration
 	for _, fieldChange := range diff.FieldsRemoved {
 		stmt := generateAddColumnSQL(fieldChange)
+		if stmt != "" {
+			stmts = append(stmts, wrapGooseStatement(stmt))
+		}
+	}
+
+	// For fields modified, we need to revert the changes in down migration
+	for _, fieldChange := range diff.FieldsModified {
+		stmt := generateReverseModifyColumnSQL(fieldChange)
 		if stmt != "" {
 			stmts = append(stmts, wrapGooseStatement(stmt))
 		}
@@ -578,4 +606,181 @@ func parseIndexFields(args []string, fields []*Field) []string {
 		}
 	}
 	return cols
+}
+
+func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, string) {
+	currentField := fieldChange.CurrentField
+	targetField := fieldChange.Field
+
+	// Skip relation fields that don't have actual columns
+	if targetField.IsArray {
+		return "", ""
+	}
+	hasRelationAttr := false
+	for _, attr := range targetField.Attributes {
+		if attr.Name == "relation" {
+			hasRelationAttr = true
+			break
+		}
+	}
+	if hasRelationAttr {
+		return "", ""
+	}
+
+	// Now we can compare current vs target to determine exactly what changed
+	var stmts []string
+	var warnings []string
+
+	// Check if type changed
+	currentNormalizedType := NormalizeTypeForComparison(currentField.Type, currentField.Attributes)
+	targetNormalizedType := NormalizeTypeForComparison(targetField.Type, targetField.Attributes)
+
+	if currentNormalizedType != targetNormalizedType {
+		// Type change - need casting
+		newSQLType := goTypeToSQLType(targetField.Type, false, targetField.Attributes)
+		castResult := CanCastType(currentNormalizedType, targetNormalizedType)
+
+		if castResult.CanCast {
+			if castResult.CastExpression != "" {
+				// Use explicit casting
+				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
+					fieldChange.ModelName, targetField.ColumnName, newSQLType, targetField.ColumnName, castResult.CastExpression)
+				stmts = append(stmts, stmt)
+			} else {
+				// Simple type change
+				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
+					fieldChange.ModelName, targetField.ColumnName, newSQLType)
+				stmts = append(stmts, stmt)
+			}
+
+			// Collect warnings for risky conversions
+			if castResult.IsRisky || castResult.WarningMessage != "" {
+				warning := fmt.Sprintf("RISKY CONVERSION: %s.%s from %s to %s - %s. This cannot be safely rolled back!",
+					fieldChange.ModelName, targetField.ColumnName, currentNormalizedType, targetNormalizedType, castResult.WarningMessage)
+				warnings = append(warnings, warning)
+				LogTypeCastWarning(fieldChange.ModelName, targetField.ColumnName, castResult)
+			}
+		} else {
+			// Cannot cast automatically
+			log.Printf("ERROR: Cannot automatically convert column %s.%s - %s",
+				fieldChange.ModelName, targetField.ColumnName, castResult.WarningMessage)
+			stmts = append(stmts, fmt.Sprintf("-- ERROR: %s\n-- Manual migration required for %s.%s",
+				castResult.WarningMessage, fieldChange.ModelName, targetField.ColumnName))
+			warning := fmt.Sprintf("MANUAL INTERVENTION REQUIRED: %s", castResult.WarningMessage)
+			warnings = append(warnings, warning)
+		}
+	}
+
+	// Check if nullability changed
+	if currentField.IsOptional != targetField.IsOptional {
+		if targetField.IsOptional {
+			// Make column nullable
+			nullStmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;",
+				fieldChange.ModelName, targetField.ColumnName)
+			stmts = append(stmts, nullStmt)
+		} else {
+			// Make column not nullable - this is risky
+			nullStmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL;",
+				fieldChange.ModelName, targetField.ColumnName)
+			stmts = append(stmts, nullStmt)
+			warning := fmt.Sprintf("RISKY: Making %s.%s NOT NULL - will fail if NULL values exist. Cannot be safely rolled back if data is modified!",
+				fieldChange.ModelName, targetField.ColumnName)
+			warnings = append(warnings, warning)
+		}
+	}
+
+	if len(stmts) == 0 {
+		// No actual changes detected
+		return fmt.Sprintf("-- No changes detected for %s.%s", fieldChange.ModelName, targetField.ColumnName), ""
+	}
+
+	var combinedWarning string
+	if len(warnings) > 0 {
+		combinedWarning = strings.Join(warnings, " | ")
+	}
+
+	return strings.Join(stmts, "\n"), combinedWarning
+}
+
+func generateModifyColumnSQL(fieldChange *FieldChange) string {
+	sql, _ := generateModifyColumnSQLWithWarning(fieldChange)
+	return sql
+}
+
+func generateReverseModifyColumnSQL(fieldChange *FieldChange) string {
+	currentField := fieldChange.CurrentField // What it was before
+	targetField := fieldChange.Field         // What it became
+
+	// Skip relation fields
+	if targetField.IsArray {
+		return ""
+	}
+	hasRelationAttr := false
+	for _, attr := range targetField.Attributes {
+		if attr.Name == "relation" {
+			hasRelationAttr = true
+			break
+		}
+	}
+	if hasRelationAttr {
+		return ""
+	}
+
+	var stmts []string
+
+	// Reverse type changes
+	currentNormalizedType := NormalizeTypeForComparison(currentField.Type, currentField.Attributes)
+	targetNormalizedType := NormalizeTypeForComparison(targetField.Type, targetField.Attributes)
+
+	if currentNormalizedType != targetNormalizedType {
+		// Need to reverse the type change: target -> current
+		originalSQLType := goTypeToSQLType(currentField.Type, false, currentField.Attributes)
+		castResult := CanCastType(targetNormalizedType, currentNormalizedType)
+
+		if castResult.CanCast && !castResult.IsRisky {
+			// Safe to reverse
+			if castResult.CastExpression != "" {
+				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
+					fieldChange.ModelName, targetField.ColumnName, originalSQLType, targetField.ColumnName, castResult.CastExpression)
+				stmts = append(stmts, stmt)
+			} else {
+				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
+					fieldChange.ModelName, targetField.ColumnName, originalSQLType)
+				stmts = append(stmts, stmt)
+			}
+		} else if castResult.CanCast && castResult.IsRisky {
+			// Risky reversal - warn but allow
+			stmt := fmt.Sprintf("-- WARNING: Risky type reversal from %s to %s\n-- %s\nALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
+				targetNormalizedType, currentNormalizedType, castResult.WarningMessage,
+				fieldChange.ModelName, targetField.ColumnName, originalSQLType, targetField.ColumnName, castResult.CastExpression)
+			stmts = append(stmts, stmt)
+		} else {
+			// Cannot reverse automatically
+			stmt := fmt.Sprintf("-- ERROR: Cannot automatically reverse type change for %s.%s\n-- From %s back to %s: %s\n-- Manual intervention required",
+				fieldChange.ModelName, targetField.ColumnName, targetNormalizedType, currentNormalizedType, castResult.WarningMessage)
+			stmts = append(stmts, stmt)
+		}
+	}
+
+	// Reverse nullability changes
+	if currentField.IsOptional != targetField.IsOptional {
+		if currentField.IsOptional {
+			// Original was nullable, target became not null -> reverse to nullable
+			nullStmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL;",
+				fieldChange.ModelName, targetField.ColumnName)
+			stmts = append(stmts, nullStmt)
+		} else {
+			// Original was not null, target became nullable -> reverse to not null
+			// This is potentially dangerous if NULL values were inserted
+			nullStmt := fmt.Sprintf("-- WARNING: Setting NOT NULL may fail if NULL values exist\nALTER TABLE %s ALTER COLUMN %s SET NOT NULL;",
+				fieldChange.ModelName, targetField.ColumnName)
+			stmts = append(stmts, nullStmt)
+		}
+	}
+
+	if len(stmts) == 0 {
+		return fmt.Sprintf("-- No reverse changes needed for %s.%s", fieldChange.ModelName, targetField.ColumnName)
+	}
+
+	return strings.Join(stmts, "\n")
 }

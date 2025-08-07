@@ -27,6 +27,24 @@ test:
 tidy:
 	go mod tidy
 
+format:
+	@echo "🎨 Formatting all Go files..."
+	@find . -name "*.go" -type f -exec gofmt -w {} \;
+	@echo "✅ Go files formatted successfully!"
+
+format-go: format
+
+format-check:
+	@echo "🔍 Checking Go file formatting..."
+	@if find . -name "*.go" -type f -exec gofmt -l {} \; | grep -q .; then \
+		echo "❌ Some Go files are not properly formatted:"; \
+		find . -name "*.go" -type f -exec gofmt -l {} \; | sed 's/^/  /'; \
+		echo "Run 'make format' to fix formatting issues"; \
+		exit 1; \
+	else \
+		echo "✅ All Go files are properly formatted"; \
+	fi
+
 clean:
 	rm -f $(BINARY_NAME)*
 
@@ -123,6 +141,9 @@ help:
 	@echo "Development targets:"
 	@echo "  test          - Run all tests"
 	@echo "  tidy          - Run go mod tidy"
+	@echo "  format        - Format all Go files"
+	@echo "  format-go     - Alias for format"
+	@echo "  format-check  - Check if Go files are properly formatted"
 	@echo ""
 	@echo "Git and versioning targets:"
 	@echo "  version       - Show current version info"
