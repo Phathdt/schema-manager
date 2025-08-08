@@ -51,19 +51,30 @@ generator client {
 }
 
 model Product {
-  id        Int      @id @default(autoincrement())
-  name      String
-  slug      String   @unique
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  fillType    String   @map("fill_type") // 'slow' or 'fast'
+  status      String   // order status
+  category    String   @default("general") // product category
   description String?
-  price     Int
-  status    String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  price       Decimal  @db.Decimal(10, 2) // precise monetary values
+  inputAmount Decimal  @map("input_amount") @db.Decimal(38, 0) // large integer as decimal
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([name])
   @@map("products")
 }
 ```
+
+**Enhanced Features:**
+- **DECIMAL Support**: Full support for PostgreSQL DECIMAL types with precision and scale
+  - `Decimal @db.Decimal(10, 2)` → `DECIMAL(10, 2)` for monetary values
+  - `Decimal @db.Decimal(38, 0)` → `DECIMAL(38, 0)` for large integers
+- **Inline Comments**: Supports inline comments (`// comment`) for field documentation
+- **Intelligent Type Changes**: Detects DECIMAL precision/scale changes with risk assessment
+- **Safe Migration Parser**: Handles complex types like `DECIMAL(36, 0) NOT NULL` correctly
 
 ## Installation
 
@@ -96,6 +107,9 @@ Download from [GitHub Releases](https://github.com/phathdt/schema-manager/releas
 ```bash
 # Generate migration from schema changes
 schema-manager generate --name "add_product_table"
+
+# Create empty migration for manual SQL writing
+schema-manager empty --name "add_custom_index"
 
 # Validate Prisma schema
 schema-manager validate
@@ -248,14 +262,43 @@ vim schema.prisma
 # 4. Generate migration
 schema-manager generate --name "update_user_table"
 
-# 5. Test migration
+# 5. Create custom migration for performance optimization
+schema-manager empty --name "add_user_email_index"
+# Edit the file to add: CREATE INDEX CONCURRENTLY idx_users_email_gin ON users USING gin(to_tsvector('english', email));
+
+# 6. Test migrations
 goose up
 goose down
 goose up
 
-# 6. Commit changes
+# 7. Commit changes
 git add schema.prisma migrations/
-git commit -m "Update user table schema"
+git commit -m "Update user table schema and add search index"
+```
+
+### 5. Mixed Schema and Custom SQL Workflow
+
+```bash
+# 1. Update schema for new fields
+vim schema.prisma  # Add new columns
+
+# 2. Generate schema migration
+schema-manager generate --name "add_user_profile_fields"
+
+# 3. Create data migration
+schema-manager empty --name "migrate_existing_user_data"
+# Edit to add data transformation SQL
+
+# 4. Create performance optimization
+schema-manager empty --name "optimize_user_queries"  
+# Edit to add custom indexes, triggers, or functions
+
+# 5. Apply all migrations
+goose up
+
+# 6. Verify with custom validation
+schema-manager empty --name "validate_data_migration"
+# Edit to add validation queries
 ```
 
 ## Migration Examples
@@ -342,19 +385,21 @@ DROP TABLE IF EXISTS products;
 -- +goose StatementEnd
 ```
 
-### 2. Adding Fields
+### 2. Adding Fields with DECIMAL Support
 
 **Updated schema.prisma:**
 ```prisma
 model Product {
-  id        Int      @id @default(autoincrement())
-  name      String
-  slug      String   @unique
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  fillType    String   @map("fill_type") // 'slow' or 'fast'
+  status      String   // order status  
   description String?
-  price     Int
-  status    String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  price       Decimal  @db.Decimal(10, 2) // monetary value with 2 decimal places
+  inputAmount Decimal  @map("input_amount") @db.Decimal(38, 0) // large integer as decimal
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@index([name])
   @@map("products")
@@ -370,20 +415,36 @@ CREATE UNIQUE INDEX idx_uniq_products_slug ON products(slug);
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-ALTER TABLE products ADD COLUMN description VARCHAR(255);
--- +goose StatementEnd
-
--- +goose StatementBegin
-ALTER TABLE products ADD COLUMN price INTEGER NOT NULL;
+ALTER TABLE products ADD COLUMN fill_type VARCHAR(255) NOT NULL;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
 ALTER TABLE products ADD COLUMN status VARCHAR(255) NOT NULL;
 -- +goose StatementEnd
 
+-- +goose StatementBegin
+ALTER TABLE products ADD COLUMN description VARCHAR(255);
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+ALTER TABLE products ADD COLUMN price DECIMAL(10, 2) NOT NULL;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+ALTER TABLE products ADD COLUMN input_amount DECIMAL(38, 0) NOT NULL;
+-- +goose StatementEnd
+
 -- +goose Down
 -- +goose StatementBegin
 ALTER TABLE products DROP COLUMN IF EXISTS slug;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+ALTER TABLE products DROP COLUMN IF EXISTS fill_type;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+ALTER TABLE products DROP COLUMN IF EXISTS status;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -395,7 +456,7 @@ ALTER TABLE products DROP COLUMN IF EXISTS price;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-ALTER TABLE products DROP COLUMN IF EXISTS status;
+ALTER TABLE products DROP COLUMN IF EXISTS input_amount;
 -- +goose StatementEnd
 ```
 
@@ -414,6 +475,45 @@ schema-manager generate --name "migration_name"
 - Generates only missing changes
 - Creates Goose-compatible migration files
 - Handles: tables, columns, indexes, constraints
+- Supports DECIMAL types with precision and scale (`@db.Decimal(10, 2)`)
+- Handles inline comments in schema files
+- Intelligent type change detection with risk assessment
+
+### `empty`
+
+Create empty migration files for manual SQL writing.
+
+```bash
+schema-manager empty --name "add_custom_index"
+schema-manager empty --name "create_trigger"
+schema-manager empty --name "add_stored_procedure"
+```
+
+**Features:**
+- Creates properly formatted Goose-compatible migration files
+- Includes StatementBegin/StatementEnd blocks for complex SQL
+- Provides helpful template comments for SQL and rollback statements
+- Perfect for operations that can't be generated from schema changes:
+  - Custom indexes and constraints
+  - Triggers and stored procedures
+  - Data migrations and transformations
+  - Performance optimizations
+  - Complex database functions
+
+**Generated Template:**
+```sql
+-- +goose Up
+-- +goose StatementBegin
+-- Write your SQL here (e.g., CREATE INDEX, TRIGGER, FUNCTION, etc.)
+
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- Write the rollback SQL here
+
+-- +goose StatementEnd
+```
 
 ### `validate`
 
@@ -602,7 +702,7 @@ goose status
 
 ## Roadmap
 
-### ✅ **Completed Features (v0.1.3)**
+### ✅ **Completed Features (v0.1.8+)**
 
 #### **Core Migration System**
 - [x] Parse Prisma schema file (schema.prisma)
@@ -610,6 +710,11 @@ goose status
 - [x] Generate Goose-compatible migration SQL from schema changes
 - [x] Field changes detection (CREATE, ALTER, DROP)
 - [x] Clean architecture with separate command files
+- [x] **DECIMAL type support** - Full PostgreSQL DECIMAL(precision, scale) support
+- [x] **Inline comment support** - Parse schema files with `// comment` syntax
+- [x] **Empty migration command** - Create manual SQL migration files
+- [x] **Enhanced migration parser** - Handle complex types like `DECIMAL(36, 0) NOT NULL`
+- [x] **Intelligent type changes** - Risk assessment for DECIMAL precision/scale changes
 
 #### **Database Integration**
 - [x] **Introspect command** - Import existing database structure into schema.prisma
@@ -620,6 +725,7 @@ goose status
 #### **CLI Implementation**
 - [x] `validate` command - Validate schema.prisma syntax
 - [x] `generate` command - Generate migration from schema changes
+- [x] `empty` command - Create empty migration files for manual SQL
 - [x] `introspect` command - Import database structure to schema.prisma
 - [x] `sync` command - Bi-directional schema synchronization
 - [x] `version` command - Show version information
