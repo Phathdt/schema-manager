@@ -2,9 +2,10 @@ package schema
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
+
+	"github.com/phathdt/schema-manager/internal/logger"
 )
 
 // removeInlineComments removes inline comments (// comment) from a line
@@ -85,8 +86,8 @@ func parseField(line string) *Field {
 		return nil
 	}
 	f := &Field{Name: parts[0], ColumnName: parts[0], Type: parts[1]}
-	fmt.Printf("DEBUG: parseField line: '%s'\n", line)
-	fmt.Printf("DEBUG: parseField parts: %v\n", parts)
+	logger.Debug("parseField line: '%s'", line)
+	logger.Debug("parseField parts: %v", parts)
 
 	// Parse attributes by finding @ symbols and handling parentheses properly
 	attributeStart := -1
@@ -132,20 +133,20 @@ func parseFieldAttributeFromParts(parts []string) *FieldAttribute {
 
 	// Reconstruct the full attribute token
 	fullToken := strings.Join(parts, " ")
-	fmt.Printf("DEBUG: parseFieldAttributeFromParts fullToken: '%s'\n", fullToken)
+	logger.Debug("parseFieldAttributeFromParts fullToken: '%s'", fullToken)
 
 	return parseFieldAttribute(fullToken)
 }
 
 func parseFieldAttribute(token string) *FieldAttribute {
-	fmt.Printf("DEBUG: parseFieldAttribute token: '%s'\n", token)
+	logger.Debug("parseFieldAttribute token: '%s'", token)
 	token = strings.TrimPrefix(token, "@")
 	name := token
 	var args []string
 	if i := strings.Index(token, "("); i >= 0 {
 		name = token[:i]
 		argsStr := strings.TrimSuffix(token[i+1:], ")")
-		fmt.Printf("DEBUG: argsStr: '%s'\n", argsStr)
+		logger.Debug("argsStr: '%s'", argsStr)
 		// Handle complex args like "fields: [organizationId], references: [id]"
 		if strings.Contains(argsStr, ":") {
 			// Split by commas, but be careful with nested brackets
@@ -161,7 +162,7 @@ func parseFieldAttribute(token string) *FieldAttribute {
 		}
 
 		// Debug: print parsed args
-		fmt.Printf("DEBUG: Parsed @%s args: %v\n", name, args)
+		logger.Debug("Parsed @%s args: %v", name, args)
 	}
 	return &FieldAttribute{Name: name, Args: args}
 }
@@ -172,7 +173,7 @@ func splitComplexArgs(argsStr string) []string {
 	inBrackets := 0
 
 	// Debug: print input
-	fmt.Printf("DEBUG: splitComplexArgs input: '%s'\n", argsStr)
+	logger.Debug("splitComplexArgs input: '%s'", argsStr)
 
 	for _, char := range argsStr {
 		if char == '[' {
@@ -193,7 +194,7 @@ func splitComplexArgs(argsStr string) []string {
 		args = append(args, current.String())
 	}
 
-	fmt.Printf("DEBUG: splitComplexArgs output: %v\n", args)
+	logger.Debug("splitComplexArgs output: %v", args)
 	return args
 }
 

@@ -2,9 +2,10 @@ package schema
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
+
+	"github.com/phathdt/schema-manager/internal/logger"
 )
 
 func GenerateMigrationSQL(diff *SchemaDiff) string {
@@ -132,7 +133,7 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 			for _, attr := range f.Attributes {
 				if attr.Name == "relation" {
 					// Debug: Print relation field processing
-					fmt.Printf("Processing relation field: %s.%s (type: %s)\n", m.Name, f.Name, f.Type)
+					logger.Debug("Processing relation field: %s.%s (type: %s)", m.Name, f.Name, f.Type)
 					// Find the foreign key field referenced by this relation
 					referencedTable := strings.ToLower(f.Type)
 					if !strings.HasSuffix(referencedTable, "s") {
@@ -144,22 +145,22 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 					onDelete := ""
 					var foreignKeyField *Field
 
-					fmt.Printf("  Total relation args: %d\n", len(attr.Args))
+					logger.Debug("  Total relation args: %d", len(attr.Args))
 					for i, relationArg := range attr.Args {
 						relationArg = strings.TrimSpace(relationArg)
-						fmt.Printf("  Processing relation arg[%d]: '%s'\n", i, relationArg)
+						logger.Debug("  Processing relation arg[%d]: '%s'", i, relationArg)
 						if strings.HasPrefix(relationArg, "fields:") {
 							// Extract field name from fields: [fieldName]
 							start := strings.Index(relationArg, "[")
 							end := strings.Index(relationArg, "]")
 							if start != -1 && end != -1 {
 								fieldName := strings.TrimSpace(relationArg[start+1 : end])
-								fmt.Printf("    Looking for field: %s\n", fieldName)
+								logger.Debug("    Looking for field: %s", fieldName)
 								for _, field := range m.Fields {
-									fmt.Printf("      Available field: %s\n", field.Name)
+									logger.Debug("      Available field: %s", field.Name)
 									if field.Name == fieldName {
 										foreignKeyField = field
-										fmt.Printf("      Found FK field: %s\n", fieldName)
+										logger.Debug("      Found FK field: %s", fieldName)
 										break
 									}
 								}
@@ -170,13 +171,13 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 							end := strings.Index(relationArg, "]")
 							if start != -1 && end != -1 {
 								referencedColumn = strings.TrimSpace(relationArg[start+1 : end])
-								fmt.Printf("    Referenced column: %s\n", referencedColumn)
+								logger.Debug("    Referenced column: %s", referencedColumn)
 							}
 						} else if strings.HasPrefix(relationArg, "onDelete:") {
 							parts := strings.Split(relationArg, ":")
 							if len(parts) > 1 {
 								onDelete = strings.TrimSpace(parts[1])
-								fmt.Printf("    OnDelete: %s\n", onDelete)
+								logger.Debug("    OnDelete: %s", onDelete)
 							}
 						}
 					}
@@ -714,7 +715,7 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 			}
 		} else {
 			// Cannot cast automatically
-			log.Printf("ERROR: Cannot automatically convert column %s.%s - %s",
+			logger.Error("Cannot automatically convert column %s.%s - %s",
 				fieldChange.ModelName, targetField.ColumnName, castResult.WarningMessage)
 			stmts = append(stmts, fmt.Sprintf("-- ERROR: %s\n-- Manual migration required for %s.%s",
 				castResult.WarningMessage, fieldChange.ModelName, targetField.ColumnName))

@@ -2,7 +2,8 @@ package schema
 
 import (
 	"fmt"
-	"log"
+
+	"github.com/phathdt/schema-manager/internal/logger"
 )
 
 // TypeCastResult represents the result of a type cast operation
@@ -240,6 +241,6 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 // LogTypeCastWarning logs warnings for risky type casts
 func LogTypeCastWarning(tableName, columnName string, result TypeCastResult) {
 	if result.IsRisky && result.WarningMessage != "" {
-		log.Printf("WARNING: Type cast for %s.%s - %s", tableName, columnName, result.WarningMessage)
+		logger.Warn("Type cast for %s.%s - %s", tableName, columnName, result.WarningMessage)
 	}
 }

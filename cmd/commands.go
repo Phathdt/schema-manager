@@ -1,6 +1,9 @@
 package cmd
 
-import "github.com/urfave/cli/v2"
+import (
+	"github.com/phathdt/schema-manager/internal/logger"
+	"github.com/urfave/cli/v2"
+)
 
 func GetAllCommands() []*cli.Command {
 	return []*cli.Command{
@@ -11,4 +14,11 @@ func GetAllCommands() []*cli.Command {
 		SyncCommand(),
 		VersionCommand(),
 	}
+}
+
+func SetupGlobalFlags(c *cli.Context) error {
+	if c.Bool("verbose") {
+		logger.SetVerbose(true)
+	}
+	return nil
 }
