@@ -1,6 +1,8 @@
 package schema
 
-import "strings"
+import (
+	"strings"
+)
 
 type FieldChange struct {
 	ModelName    string
@@ -54,6 +56,7 @@ func DiffSchemas(current, target *Schema) *SchemaDiff {
 	for tableName, tModel := range targetModelMap {
 		if cModel, ok := currentModelMap[tableName]; ok {
 			// Model exists in both, check for field changes
+
 			currentFieldMap := map[string]*Field{}
 			targetFieldMap := map[string]*Field{}
 
@@ -90,6 +93,7 @@ func DiffSchemas(current, target *Schema) *SchemaDiff {
 			for columnName, tField := range targetFieldMap {
 				if cField, ok := currentFieldMap[columnName]; ok {
 					// Field exists in both, check if it's been modified
+
 					if !fieldsEqual(cField, tField) {
 						fieldsModified = append(fieldsModified, &FieldChange{
 							ModelName:    tModel.TableName,
@@ -138,40 +142,24 @@ func DiffSchemas(current, target *Schema) *SchemaDiff {
 
 // fieldsEqual compares two fields to see if they are equivalent
 func fieldsEqual(current, target *Field) bool {
-	// Normalize types for comparison (PostgreSQL types vs Prisma types)
-	currentNormalizedType := NormalizeTypeForComparison(current.Type, current.Attributes)
-	targetNormalizedType := NormalizeTypeForComparison(target.Type, target.Attributes)
+	// Both schemas now use consistent internal representation from SQL parsing
+	// Compare the SQL types directly - this handles DECIMAL precision/scale automatically
+	currentSQL := GetSQLTypeForField(current)
+	targetSQL := GetSQLTypeForField(target)
 
-	// Compare normalized types
-	if currentNormalizedType != targetNormalizedType {
+	if currentSQL != targetSQL {
 		return false
 	}
 
-	// Special handling for DECIMAL types - check if precision/scale changed
-	if currentNormalizedType == "Decimal" && targetNormalizedType == "Decimal" {
-		// Get the actual SQL types to compare DECIMAL precision/scale
-		currentSQL := getSQLTypeForField(current)
-		targetSQL := getSQLTypeForField(target)
-		if currentSQL != targetSQL {
-			return false // DECIMAL precision/scale changed
-		}
-	}
 	if current.IsOptional != target.IsOptional {
 		return false
 	}
+
 	if current.IsArray != target.IsArray {
 		return false
 	}
 
-	// Only compare schema-affecting attributes, not metadata attributes
-	// The current schema (from migrations) won't have Prisma-specific attributes like @map, @unique, etc.
-	// since those are handled at the SQL level in the migration files.
-	// We should only care about attributes that affect the actual database schema structure.
-
-	// For now, skip attribute comparison for fields that already exist in the database
-	// since the migration parser doesn't capture Prisma metadata attributes.
-	// TODO: In the future, we could compare specific schema-affecting attributes like constraints.
-
+	// No need for complex attribute comparison since migration parser produces clean schema
 	return true
 }
 
@@ -215,7 +203,7 @@ func NormalizeTypeForComparison(fieldType string, attributes []*FieldAttribute) 
 }
 
 // getSQLTypeForField returns the SQL type for a field, considering @db attributes
-func getSQLTypeForField(field *Field) string {
+func GetSQLTypeForField(field *Field) string {
 	// Check for @db type attributes first
 	for _, attr := range field.Attributes {
 		if strings.HasPrefix(attr.Name, "db.") {
@@ -227,14 +215,37 @@ func getSQLTypeForField(field *Field) string {
 				return "TEXT"
 			}
 			if dbType == "Decimal" && len(attr.Args) >= 2 {
-				return "DECIMAL(" + attr.Args[0] + ", " + attr.Args[1] + ")"
+				return "DECIMAL(" + attr.Args[0] + "," + attr.Args[1] + ")"
 			}
 		}
 	}
 
-	// If field type is already a SQL type (from migrations), return as-is
-	if strings.HasPrefix(field.Type, "DECIMAL(") {
-		return field.Type
+	// If field type is already a SQL type (from migrations), normalize and return
+	// Handle case-insensitive DECIMAL types from migrations
+	upperType := strings.ToUpper(field.Type)
+	if strings.HasPrefix(upperType, "DECIMAL(") {
+		// Normalize to uppercase for consistency
+		return upperType
+	}
+
+	// Handle other SQL types from migrations (normalize to uppercase)
+	switch strings.ToUpper(field.Type) {
+	case "TEXT":
+		return "TEXT"
+	case "INTEGER":
+		return "INTEGER"
+	case "BIGINT":
+		return "BIGINT"
+	case "SERIAL":
+		// SERIAL from migrations should be treated as INTEGER for comparison purposes
+		// since it's functionally equivalent to Int @default(autoincrement())
+		return "INTEGER"
+	case "NUMERIC":
+		return "NUMERIC"
+	case "TIMESTAMP":
+		return "TIMESTAMP"
+	case "BOOLEAN":
+		return "BOOLEAN"
 	}
 
 	// Map Prisma types to SQL types
@@ -242,6 +253,8 @@ func getSQLTypeForField(field *Field) string {
 	case "String":
 		return "TEXT"
 	case "Int":
+		// Check if this Int field has autoincrement - if so, it's equivalent to SERIAL
+		// For comparison purposes, we normalize both to INTEGER
 		return "INTEGER"
 	case "BigInt":
 		return "BIGINT"
@@ -256,6 +269,6 @@ func getSQLTypeForField(field *Field) string {
 	case "Json":
 		return "JSONB"
 	default:
-		return field.Type
+		return strings.ToUpper(field.Type)
 	}
 }

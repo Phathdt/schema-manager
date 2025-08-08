@@ -414,7 +414,7 @@ func goTypeToSQLType(t string, isAutoIncrement bool, attributes []*FieldAttribut
 				return "TEXT"
 			}
 			if dbType == "Decimal" && len(attr.Args) >= 2 {
-				return "DECIMAL(" + attr.Args[0] + ", " + attr.Args[1] + ")"
+				return "DECIMAL(" + attr.Args[0] + "," + attr.Args[1] + ")"
 			}
 		}
 	}
@@ -637,7 +637,7 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 	currentField := fieldChange.CurrentField
 	targetField := fieldChange.Field
 
-	// Skip relation fields that don't have actual columns
+	// Skip relation fields
 	if targetField.IsArray {
 		return "", ""
 	}
@@ -652,17 +652,16 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 		return "", ""
 	}
 
-	// Now we can compare current vs target to determine exactly what changed
 	var stmts []string
 	var warnings []string
 
-	// Check if type changed
+	// Compare types using the same logic as field comparison
 	currentNormalizedType := NormalizeTypeForComparison(currentField.Type, currentField.Attributes)
 	targetNormalizedType := NormalizeTypeForComparison(targetField.Type, targetField.Attributes)
 
-	// Get the actual SQL types to compare precision/scale differences
-	currentSQLType := goTypeToSQLType(currentField.Type, false, currentField.Attributes)
-	targetSQLType := goTypeToSQLType(targetField.Type, false, targetField.Attributes)
+	// Get the actual SQL types using our fixed GetSQLTypeForField function
+	currentSQLType := GetSQLTypeForField(currentField)
+	targetSQLType := GetSQLTypeForField(targetField)
 
 	// Check if we have a type change (normalized types differ) or DECIMAL precision/scale change
 	hasTypeChange := currentNormalizedType != targetNormalizedType
@@ -820,6 +819,9 @@ func handleDecimalPrecisionChange(currentType, targetType string) TypeCastResult
 // extractDecimalPrecisionScale extracts precision and scale from a DECIMAL type string
 // Returns (-1, -1) if parsing fails
 func extractDecimalPrecisionScale(decimalType string) (int, int) {
+	// Normalize to uppercase for consistent parsing
+	decimalType = strings.ToUpper(decimalType)
+
 	// Handle DECIMAL(precision, scale) format
 	if !strings.HasPrefix(decimalType, "DECIMAL(") {
 		return -1, -1
@@ -878,8 +880,8 @@ func generateReverseModifyColumnSQL(fieldChange *FieldChange) string {
 	targetNormalizedType := NormalizeTypeForComparison(targetField.Type, targetField.Attributes)
 
 	// Get the actual SQL types to compare precision/scale differences
-	currentSQLType := goTypeToSQLType(currentField.Type, false, currentField.Attributes)
-	targetSQLType := goTypeToSQLType(targetField.Type, false, targetField.Attributes)
+	currentSQLType := GetSQLTypeForField(currentField)
+	targetSQLType := GetSQLTypeForField(targetField)
 
 	// Check if we have a type change (normalized types differ) or DECIMAL precision/scale change
 	hasTypeChange := currentNormalizedType != targetNormalizedType
