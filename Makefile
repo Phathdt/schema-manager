@@ -30,6 +30,12 @@ tidy:
 format:
 	@echo "🎨 Formatting all Go files..."
 	@find . -name "*.go" -type f -exec gofmt -w {} \;
+	@echo "📦 Organizing imports..."
+	@goimports -w .
+	@echo "📏 Formatting line lengths..."
+	@golines -w -m 120 .
+	@echo "✨ Applying gofumpt formatting..."
+	@gofumpt -extra -w .
 	@echo "✅ Go files formatted successfully!"
 
 format-go: format

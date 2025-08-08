@@ -145,7 +145,10 @@ func connectWithSSLFallback(databaseURL string) (*sql.DB, error) {
 
 			if err := db.Ping(); err != nil {
 				db.Close()
-				return nil, fmt.Errorf("connection failed even with SSL disabled. Please check your database connection settings: %w", err)
+				return nil, fmt.Errorf(
+					"connection failed even with SSL disabled. Please check your database connection settings: %w",
+					err,
+				)
 			}
 
 			fmt.Println("✅ Connected successfully with SSL disabled")
@@ -486,7 +489,12 @@ func generateBaselineMigration(tables []TableInfo) string {
 	for _, table := range tables {
 		migration.WriteString("DO $$\n")
 		migration.WriteString("BEGIN\n")
-		migration.WriteString(fmt.Sprintf("    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '%s') THEN\n", table.TableName))
+		migration.WriteString(
+			fmt.Sprintf(
+				"    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '%s') THEN\n",
+				table.TableName,
+			),
+		)
 		migration.WriteString(fmt.Sprintf("        CREATE TABLE %s (\n", table.TableName))
 
 		var columnDefs []string
@@ -635,14 +643,14 @@ func toCamelCase(s string) string {
 }
 
 func writeSchemaFile(filename, content string) error {
-	return os.WriteFile(filename, []byte(content), 0644)
+	return os.WriteFile(filename, []byte(content), 0o644)
 }
 
 func writeMigrationFile(filename, content string) error {
-	return os.WriteFile(filename, []byte(content), 0644)
+	return os.WriteFile(filename, []byte(content), 0o644)
 }
 
 func createMigrationsDir() error {
 	dir := filepath.Dir("migrations/")
-	return os.MkdirAll(dir, 0755)
+	return os.MkdirAll(dir, 0o755)
 }

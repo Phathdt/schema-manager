@@ -327,7 +327,10 @@ func GenerateMigrationSQL(diff *PrismaDiff) (string, string) {
 				}
 				if attr.Name == "unique" {
 					idxName := "idx_uniq_" + table + "_" + idxNamePart
-					upStmts = append(upStmts, "CREATE UNIQUE INDEX "+idxName+" ON "+table+"("+strings.Join(fields, ", ")+");")
+					upStmts = append(
+						upStmts,
+						"CREATE UNIQUE INDEX "+idxName+" ON "+table+"("+strings.Join(fields, ", ")+");",
+					)
 					downStmts = append([]string{"DROP INDEX IF EXISTS " + idxName + ";"}, downStmts...)
 				} else {
 					idxName := "idx_" + table + "_" + idxNamePart
@@ -387,7 +390,10 @@ func GenerateMigrationSQL(diff *PrismaDiff) (string, string) {
 				}
 				if attr.Name == "unique" {
 					idxName := "idx_uniq_" + table + "_" + idxNamePart
-					upStmts = append(upStmts, "CREATE UNIQUE INDEX "+idxName+" ON "+table+"("+strings.Join(fields, ", ")+");")
+					upStmts = append(
+						upStmts,
+						"CREATE UNIQUE INDEX "+idxName+" ON "+table+"("+strings.Join(fields, ", ")+");",
+					)
 					downStmts = append([]string{"DROP INDEX IF EXISTS " + idxName + ";"}, downStmts...)
 				} else {
 					idxName := "idx_" + table + "_" + idxNamePart
@@ -513,7 +519,7 @@ func parseModelAttribute(line string) *ModelAttribute {
 	return &ModelAttribute{Name: name, Args: args}
 }
 
-func parseDefaultValue(val string, typ string) string {
+func parseDefaultValue(val, typ string) string {
 	v := strings.Trim(val, "\"")
 	switch typ {
 	case "String":

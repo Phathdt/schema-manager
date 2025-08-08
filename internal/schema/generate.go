@@ -118,7 +118,10 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 			}
 			if isUnique {
 				idxName := "idx_uniq_" + m.TableName + "_" + f.ColumnName
-				uniqueIndexes = append(uniqueIndexes, "CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+f.ColumnName+");")
+				uniqueIndexes = append(
+					uniqueIndexes,
+					"CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+f.ColumnName+");",
+				)
 			}
 			cols = append(cols, col)
 		}
@@ -196,13 +199,19 @@ func GenerateMigrationSQL(diff *SchemaDiff) string {
 				if len(attr.Args) > 0 {
 					idxCols := parseIndexFields(attr.Args, m.Fields)
 					idxName := "idx_uniq_" + m.TableName + "_" + strings.Join(idxCols, "_")
-					uniqueIndexes = append(uniqueIndexes, "CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");")
+					uniqueIndexes = append(
+						uniqueIndexes,
+						"CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");",
+					)
 				}
 			case "index":
 				if len(attr.Args) > 0 {
 					idxCols := parseIndexFields(attr.Args, m.Fields)
 					idxName := "idx_" + m.TableName + "_" + strings.Join(idxCols, "_")
-					indexes = append(indexes, "CREATE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");")
+					indexes = append(
+						indexes,
+						"CREATE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");",
+					)
 				}
 			}
 		}
@@ -252,7 +261,7 @@ func wrapGooseStatement(sql string) string {
 	return "-- +goose StatementBegin\n" + sql + "\n-- +goose StatementEnd"
 }
 
-func wrapGooseStatementWithWarning(sql string, warning string) string {
+func wrapGooseStatementWithWarning(sql, warning string) string {
 	return "-- +goose StatementBegin\n-- WARNING: " + warning + "\n" + sql + "\n-- +goose StatementEnd"
 }
 
@@ -346,7 +355,10 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 			}
 			if isUnique {
 				idxName := "idx_uniq_" + m.TableName + "_" + f.ColumnName
-				uniqueIndexes = append(uniqueIndexes, "CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+f.ColumnName+");")
+				uniqueIndexes = append(
+					uniqueIndexes,
+					"CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+f.ColumnName+");",
+				)
 			}
 			cols = append(cols, col)
 		}
@@ -357,13 +369,19 @@ func GenerateDownMigrationSQL(diff *SchemaDiff) string {
 				if len(attr.Args) > 0 {
 					idxCols := parseIndexFields(attr.Args, m.Fields)
 					idxName := "idx_uniq_" + m.TableName + "_" + strings.Join(idxCols, "_")
-					uniqueIndexes = append(uniqueIndexes, "CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");")
+					uniqueIndexes = append(
+						uniqueIndexes,
+						"CREATE UNIQUE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");",
+					)
 				}
 			case "index":
 				if len(attr.Args) > 0 {
 					idxCols := parseIndexFields(attr.Args, m.Fields)
 					idxName := "idx_" + m.TableName + "_" + strings.Join(idxCols, "_")
-					indexes = append(indexes, "CREATE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");")
+					indexes = append(
+						indexes,
+						"CREATE INDEX "+idxName+" ON "+m.TableName+"("+strings.Join(idxCols, ", ")+");",
+					)
 				}
 			}
 		}
@@ -438,7 +456,8 @@ func isRelationField(field *Field) bool {
 		return true
 	}
 	// Check if it's a custom model type
-	if field.Type != "Int" && field.Type != "String" && field.Type != "DateTime" && field.Type != "Boolean" && field.Type != "Float" {
+	if field.Type != "Int" && field.Type != "String" && field.Type != "DateTime" && field.Type != "Boolean" &&
+		field.Type != "Float" {
 		// Could be a custom model or enum - check if it has relation attributes
 		return len(field.Attributes) == 0 // Relations usually have no attributes or only @relation
 	}
@@ -483,7 +502,7 @@ func getRelationInfo(field *Field) (string, string, string) {
 	return referencedTable, referencedColumn, onDelete
 }
 
-func parseDefaultValue(val string, typ string) string {
+func parseDefaultValue(val, typ string) string {
 	v := strings.Trim(val, "\"")
 	switch typ {
 	case "String":
@@ -643,8 +662,14 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 		if castResult.CanCast {
 			if castResult.CastExpression != "" {
 				// Use explicit casting
-				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
-					fieldChange.ModelName, targetField.ColumnName, newSQLType, targetField.ColumnName, castResult.CastExpression)
+				stmt := fmt.Sprintf(
+					"ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
+					fieldChange.ModelName,
+					targetField.ColumnName,
+					newSQLType,
+					targetField.ColumnName,
+					castResult.CastExpression,
+				)
 				stmts = append(stmts, stmt)
 			} else {
 				// Simple type change
@@ -655,8 +680,14 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 
 			// Collect warnings for risky conversions
 			if castResult.IsRisky || castResult.WarningMessage != "" {
-				warning := fmt.Sprintf("RISKY CONVERSION: %s.%s from %s to %s - %s. This cannot be safely rolled back!",
-					fieldChange.ModelName, targetField.ColumnName, currentNormalizedType, targetNormalizedType, castResult.WarningMessage)
+				warning := fmt.Sprintf(
+					"RISKY CONVERSION: %s.%s from %s to %s - %s. This cannot be safely rolled back!",
+					fieldChange.ModelName,
+					targetField.ColumnName,
+					currentNormalizedType,
+					targetNormalizedType,
+					castResult.WarningMessage,
+				)
 				warnings = append(warnings, warning)
 				LogTypeCastWarning(fieldChange.ModelName, targetField.ColumnName, castResult)
 			}
@@ -740,8 +771,14 @@ func generateReverseModifyColumnSQL(fieldChange *FieldChange) string {
 		if castResult.CanCast && !castResult.IsRisky {
 			// Safe to reverse
 			if castResult.CastExpression != "" {
-				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
-					fieldChange.ModelName, targetField.ColumnName, originalSQLType, targetField.ColumnName, castResult.CastExpression)
+				stmt := fmt.Sprintf(
+					"ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
+					fieldChange.ModelName,
+					targetField.ColumnName,
+					originalSQLType,
+					targetField.ColumnName,
+					castResult.CastExpression,
+				)
 				stmts = append(stmts, stmt)
 			} else {
 				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;",

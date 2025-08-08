@@ -87,7 +87,8 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 						// In SQL, columns are nullable by default unless NOT NULL is specified
 						// PRIMARY KEY also implies NOT NULL
 						columnDef := strings.ToUpper(colMatch[2])
-						isOptional := !strings.Contains(columnDef, "NOT NULL") && !strings.Contains(columnDef, "PRIMARY KEY")
+						isOptional := !strings.Contains(columnDef, "NOT NULL") &&
+							!strings.Contains(columnDef, "PRIMARY KEY")
 
 						model.Fields = append(model.Fields, &Field{
 							Name:       fname,
@@ -149,7 +150,8 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 
 					// Check if field is nullable by looking for NOT NULL constraint or PRIMARY KEY
 					columnDefUpper := strings.ToUpper(columnDef)
-					isOptional := !strings.Contains(columnDefUpper, "NOT NULL") && !strings.Contains(columnDefUpper, "PRIMARY KEY")
+					isOptional := !strings.Contains(columnDefUpper, "NOT NULL") &&
+						!strings.Contains(columnDefUpper, "PRIMARY KEY")
 
 					// Find or create the model for this table
 					if model, exists := tables[tableName]; exists {

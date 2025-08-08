@@ -41,7 +41,7 @@ func GenerateCommand() *cli.Command {
 				down := schema.GenerateDownMigrationSQL(diff)
 				ts := time.Now().Format("20060102150405")
 				name := c.String("name")
-				os.MkdirAll("migrations", 0755)
+				os.MkdirAll("migrations", 0o755)
 				filename := "migrations/" + ts + "_" + name + ".sql"
 				f, err := os.Create(filename)
 				if err != nil {
@@ -75,10 +75,21 @@ func GenerateCommand() *cli.Command {
 			}
 
 			diff := schema.DiffSchemas(currentSchema, targetSchema)
-			fmt.Printf("Diff: %d models added, %d models removed, %d enums added, %d enums removed, %d fields added, %d fields removed, %d fields modified\n",
-				len(diff.ModelsAdded), len(diff.ModelsRemoved), len(diff.EnumsAdded), len(diff.EnumsRemoved), len(diff.FieldsAdded), len(diff.FieldsRemoved), len(diff.FieldsModified))
+			fmt.Printf(
+				"Diff: %d models added, %d models removed, %d enums added, %d enums removed, %d fields added, %d fields removed, %d fields modified\n",
+				len(
+					diff.ModelsAdded,
+				),
+				len(diff.ModelsRemoved),
+				len(diff.EnumsAdded),
+				len(diff.EnumsRemoved),
+				len(diff.FieldsAdded),
+				len(diff.FieldsRemoved),
+				len(diff.FieldsModified),
+			)
 
-			if diff == nil || (len(diff.ModelsAdded) == 0 && len(diff.EnumsAdded) == 0 && len(diff.FieldsAdded) == 0 && len(diff.FieldsRemoved) == 0 && len(diff.FieldsModified) == 0) {
+			if diff == nil ||
+				(len(diff.ModelsAdded) == 0 && len(diff.EnumsAdded) == 0 && len(diff.FieldsAdded) == 0 && len(diff.FieldsRemoved) == 0 && len(diff.FieldsModified) == 0) {
 				fmt.Println("No changes detected.")
 				return nil
 			}

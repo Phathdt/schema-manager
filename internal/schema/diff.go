@@ -89,7 +89,6 @@ func DiffSchemas(current, target *Schema) *SchemaDiff {
 				if cField, ok := currentFieldMap[columnName]; ok {
 					// Field exists in both, check if it's been modified
 					if !fieldsEqual(cField, tField) {
-
 						fieldsModified = append(fieldsModified, &FieldChange{
 							ModelName:    tModel.TableName,
 							Field:        tField,

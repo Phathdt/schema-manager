@@ -310,7 +310,7 @@ generator client {
 		existingSchema += modelString
 	}
 
-	if err := os.WriteFile("schema.prisma", []byte(existingSchema), 0644); err != nil {
+	if err := os.WriteFile("schema.prisma", []byte(existingSchema), 0o644); err != nil {
 		return fmt.Errorf("failed to write schema file: %w", err)
 	}
 
@@ -371,7 +371,7 @@ func createConditionalMigration(tables []TableInfo) error {
 		return fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
-	if err := os.WriteFile(migrationFile, []byte(migrationContent), 0644); err != nil {
+	if err := os.WriteFile(migrationFile, []byte(migrationContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write migration file: %w", err)
 	}
 
@@ -390,7 +390,12 @@ func generateConditionalMigration(tables []TableInfo) string {
 	for _, table := range tables {
 		migration.WriteString("DO $$\n")
 		migration.WriteString("BEGIN\n")
-		migration.WriteString(fmt.Sprintf("    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '%s') THEN\n", table.TableName))
+		migration.WriteString(
+			fmt.Sprintf(
+				"    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '%s') THEN\n",
+				table.TableName,
+			),
+		)
 		migration.WriteString(fmt.Sprintf("        CREATE TABLE %s (\n", table.TableName))
 
 		var columnDefs []string
@@ -475,7 +480,7 @@ func generateMigrationFromDiff(diff *SchemaDiff, migrationName string) error {
 		return fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
-	if err := os.WriteFile(migrationFile, []byte(migration.String()), 0644); err != nil {
+	if err := os.WriteFile(migrationFile, []byte(migration.String()), 0o644); err != nil {
 		return fmt.Errorf("failed to write migration file: %w", err)
 	}
 

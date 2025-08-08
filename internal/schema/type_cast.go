@@ -183,8 +183,12 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 
 	// No casting rule found
 	return TypeCastResult{
-		CanCast:        false,
-		WarningMessage: fmt.Sprintf("No automatic casting available from %s to %s. Manual SQL migration required.", sourcePG, targetPG),
+		CanCast: false,
+		WarningMessage: fmt.Sprintf(
+			"No automatic casting available from %s to %s. Manual SQL migration required.",
+			sourcePG,
+			targetPG,
+		),
 	}
 }
 
