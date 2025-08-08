@@ -33,7 +33,6 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 	addColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) ADD COLUMN ([a-zA-Z0-9_]+) ([^;]+);`)
 	dropColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) DROP COLUMN IF EXISTS ([a-zA-Z0-9_]+);`)
 	alterColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) ALTER COLUMN ([a-zA-Z0-9_]+) TYPE ([^;]+);`)
-	colRe := regexp.MustCompile(`(?m)^\s*([a-zA-Z0-9_]+) ([^,\n]+)`) // name type ...
 
 	for _, fname := range migrationFiles {
 		b, err := os.ReadFile(dir + "/" + fname)
@@ -64,7 +63,7 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 					table := mtab[1]
 					colsBlock := mtab[2]
 					model := &Model{Name: table, TableName: table}
-					lines := strings.Split(colsBlock, ",")
+					lines := parseTableColumns(colsBlock)
 					for _, line := range lines {
 						line = strings.TrimSpace(line)
 						if line == "" {
@@ -77,18 +76,18 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 							strings.HasPrefix(strings.ToUpper(line), "FOREIGN KEY") {
 							continue
 						}
-						colMatch := colRe.FindStringSubmatch(line)
-						if len(colMatch) < 3 {
+						// Parse column definition properly to handle commas in types
+						fname, fullColumnDef := parseColumnDefinition(line)
+						if fname == "" || fullColumnDef == "" {
 							continue
 						}
-						fname := colMatch[1]
 						// Extract the type, handling types with parentheses like DECIMAL(10, 2)
-						ftype := extractSQLType(colMatch[2])
+						ftype := extractSQLType(fullColumnDef)
 
 						// Check if field is nullable by looking for NOT NULL constraint or PRIMARY KEY
 						// In SQL, columns are nullable by default unless NOT NULL is specified
 						// PRIMARY KEY also implies NOT NULL
-						columnDef := strings.ToUpper(colMatch[2])
+						columnDef := strings.ToUpper(fullColumnDef)
 						isOptional := !strings.Contains(columnDef, "NOT NULL") &&
 							!strings.Contains(columnDef, "PRIMARY KEY")
 
@@ -246,4 +245,65 @@ func extractSQLType(columnDef string) string {
 	}
 
 	return columnDef
+}
+
+// parseColumnDefinition parses a column definition line and returns name and full definition
+func parseColumnDefinition(line string) (string, string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", ""
+	}
+
+	// Remove trailing comma if present
+	line = strings.TrimRight(line, ",")
+	line = strings.TrimSpace(line)
+
+	// Split into parts, but only use the first space as separator between name and definition
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return "", ""
+	}
+
+	columnName := parts[0]
+	// Everything after the column name is the column definition
+	nameEnd := strings.Index(line, columnName) + len(columnName)
+	columnDef := strings.TrimSpace(line[nameEnd:])
+
+	return columnName, columnDef
+}
+
+// parseTableColumns properly splits column definitions handling commas inside parentheses
+func parseTableColumns(colsBlock string) []string {
+	var columns []string
+	var current strings.Builder
+	parenthesesLevel := 0
+
+	for _, char := range colsBlock {
+		switch char {
+		case '(':
+			parenthesesLevel++
+			current.WriteRune(char)
+		case ')':
+			parenthesesLevel--
+			current.WriteRune(char)
+		case ',':
+			if parenthesesLevel == 0 {
+				// This comma is a column separator, not inside parentheses
+				columns = append(columns, current.String())
+				current.Reset()
+			} else {
+				// This comma is inside parentheses, keep it
+				current.WriteRune(char)
+			}
+		default:
+			current.WriteRune(char)
+		}
+	}
+
+	// Add the last column
+	if current.Len() > 0 {
+		columns = append(columns, current.String())
+	}
+
+	return columns
 }

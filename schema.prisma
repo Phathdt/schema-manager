@@ -13,11 +13,12 @@ model Product {
   productId   String   @unique
   name        Int
   slug        String   @unique
+  fillType    String   @map("fill_type") // 'slow' or 'fast'
+  status      String // order status
+  category    String   @default("general") // product category
   description String?
   price       Int
   inputAmount Decimal  @map("input_amount") @db.Decimal(36, 0)
-  status      String
-  category    String   @default("general")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

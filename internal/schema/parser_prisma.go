@@ -7,6 +7,14 @@ import (
 	"strings"
 )
 
+// removeInlineComments removes inline comments (// comment) from a line
+func removeInlineComments(line string) string {
+	if idx := strings.Index(line, "//"); idx != -1 {
+		return strings.TrimSpace(line[:idx])
+	}
+	return line
+}
+
 func ParsePrismaFileToSchema(ctx context.Context, path string) (*Schema, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -18,8 +26,9 @@ func ParsePrismaFileToSchema(ctx context.Context, path string) (*Schema, error) 
 	var currentModel *Model
 	var currentEnum *Enum
 	for _, line := range lines {
-		l := strings.TrimSpace(line)
-		if l == "" || strings.HasPrefix(l, "//") {
+		// Remove inline comments first, then trim whitespace
+		l := strings.TrimSpace(removeInlineComments(line))
+		if l == "" {
 			continue
 		}
 		if strings.HasPrefix(l, "model ") {
