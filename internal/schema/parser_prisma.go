@@ -85,7 +85,7 @@ func parseField(line string) *Field {
 	if len(parts) < 2 {
 		return nil
 	}
-	f := &Field{Name: parts[0], ColumnName: parts[0], Type: parts[1]}
+	f := &Field{Name: parts[0], ColumnName: strings.ToLower(parts[0]), Type: parts[1]}
 	logger.Debug("parseField line: '%s'", line)
 	logger.Debug("parseField parts: %v", parts)
 
