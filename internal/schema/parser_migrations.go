@@ -32,6 +32,7 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 	dropTypeRe := regexp.MustCompile(`(?i)DROP TYPE IF EXISTS ([a-zA-Z0-9_]+);`)
 	addColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) ADD COLUMN ([a-zA-Z0-9_]+) ([^;]+);`)
 	dropColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) DROP COLUMN IF EXISTS ([a-zA-Z0-9_]+);`)
+	alterColumnRe := regexp.MustCompile(`(?i)ALTER TABLE ([a-zA-Z0-9_]+) ALTER COLUMN ([a-zA-Z0-9_]+) TYPE ([^;]+);`)
 	colRe := regexp.MustCompile(`(?m)^\s*([a-zA-Z0-9_]+) ([^,\n]+)`) // name type ...
 
 	for _, fname := range migrationFiles {
@@ -81,7 +82,8 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 							continue
 						}
 						fname := colMatch[1]
-						ftype := strings.Fields(colMatch[2])[0]
+						// Extract the type, handling types with parentheses like DECIMAL(10, 2)
+						ftype := extractSQLType(colMatch[2])
 
 						// Check if field is nullable by looking for NOT NULL constraint or PRIMARY KEY
 						// In SQL, columns are nullable by default unless NOT NULL is specified
@@ -146,7 +148,8 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 					tableName := match[1]
 					columnName := match[2]
 					columnDef := match[3]
-					columnType := strings.Fields(columnDef)[0] // Get the first word as type
+					// Extract the type, handling types with parentheses like DECIMAL(10, 2)
+					columnType := extractSQLType(columnDef)
 
 					// Check if field is nullable by looking for NOT NULL constraint or PRIMARY KEY
 					columnDefUpper := strings.ToUpper(columnDef)
@@ -185,6 +188,29 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 					}
 				}
 			}
+
+			// Handle ALTER TABLE ALTER COLUMN TYPE
+			if strings.Contains(stmtBlock, "ALTER TABLE") && strings.Contains(stmtBlock, "ALTER COLUMN") &&
+				strings.Contains(stmtBlock, "TYPE") {
+				matches := alterColumnRe.FindAllStringSubmatch(stmtBlock, -1)
+				for _, match := range matches {
+					tableName := match[1]
+					columnName := match[2]
+					columnDef := match[3]
+					// Extract the type, handling types with parentheses like DECIMAL(10, 2)
+					newColumnType := extractSQLType(columnDef)
+
+					// Find the model and update the field type
+					if model, exists := tables[tableName]; exists {
+						for _, field := range model.Fields {
+							if field.ColumnName == columnName {
+								field.Type = newColumnType
+								break
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -197,4 +223,27 @@ func ParseMigrationsToSchema(ctx context.Context, dir string) (*Schema, error) {
 	}
 
 	return schema, nil
+}
+
+// extractSQLType extracts the SQL type from a column definition, handling types with parentheses
+func extractSQLType(columnDef string) string {
+	columnDef = strings.TrimSpace(columnDef)
+
+	// Handle types with parentheses like DECIMAL(10, 2), VARCHAR(255), etc.
+	if strings.Contains(columnDef, "(") && strings.Contains(columnDef, ")") {
+		// Find the type name and its parentheses
+		parenStart := strings.Index(columnDef, "(")
+		parenEnd := strings.Index(columnDef, ")")
+		if parenStart > 0 && parenEnd > parenStart {
+			return columnDef[:parenEnd+1]
+		}
+	}
+
+	// For types without parentheses, just get the first word
+	fields := strings.Fields(columnDef)
+	if len(fields) > 0 {
+		return fields[0]
+	}
+
+	return columnDef
 }

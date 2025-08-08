@@ -11,10 +11,11 @@ generator client {
 model Product {
   id          Int      @id @default(autoincrement())
   productId   String   @unique
-  name        String
+  name        Int
   slug        String   @unique
   description String?
   price       Int
+  inputAmount Decimal  @map("input_amount") @db.Decimal(36, 0)
   status      String
   category    String   @default("general")
   createdAt   DateTime @default(now()) @map("created_at")

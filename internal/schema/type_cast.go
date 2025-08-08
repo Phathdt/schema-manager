@@ -65,6 +65,11 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 				CastExpression: "::DOUBLE PRECISION",
 				IsRisky:        false,
 			},
+			"NUMERIC": {
+				CanCast:        true,
+				CastExpression: "::NUMERIC",
+				IsRisky:        false,
+			},
 		},
 		"INTEGER": {
 			"BIGINT": {
@@ -80,6 +85,11 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 			"DOUBLE PRECISION": {
 				CanCast:        true,
 				CastExpression: "::DOUBLE PRECISION",
+				IsRisky:        false,
+			},
+			"NUMERIC": {
+				CanCast:        true,
+				CastExpression: "::NUMERIC",
 				IsRisky:        false,
 			},
 			"BOOLEAN": {
@@ -126,6 +136,12 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 				IsRisky:        true,
 				WarningMessage: "Converting TEXT to JSONB may fail if text is not valid JSON",
 			},
+			"NUMERIC": {
+				CanCast:        true,
+				CastExpression: "::NUMERIC",
+				IsRisky:        true,
+				WarningMessage: "Converting TEXT to NUMERIC may fail if text contains non-numeric values",
+			},
 		},
 		"DOUBLE PRECISION": {
 			"INTEGER": {
@@ -167,6 +183,35 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 			},
 		},
 		"JSONB": {
+			"TEXT": {
+				CanCast:        true,
+				CastExpression: "::TEXT",
+				IsRisky:        false,
+			},
+		},
+		"NUMERIC": {
+			"INTEGER": {
+				CanCast:        true,
+				CastExpression: "::INTEGER",
+				IsRisky:        true,
+				WarningMessage: "Converting NUMERIC to INTEGER will truncate decimal places and may fail if values exceed INTEGER range",
+			},
+			"BIGINT": {
+				CanCast:        true,
+				CastExpression: "::BIGINT",
+				IsRisky:        true,
+				WarningMessage: "Converting NUMERIC to BIGINT will truncate decimal places and may fail if values exceed BIGINT range",
+			},
+			"DOUBLE PRECISION": {
+				CanCast:        true,
+				CastExpression: "::DOUBLE PRECISION",
+				IsRisky:        false,
+			},
+			"NUMERIC": {
+				CanCast:        true,
+				CastExpression: "::NUMERIC",
+				IsRisky:        false,
+			},
 			"TEXT": {
 				CanCast:        true,
 				CastExpression: "::TEXT",

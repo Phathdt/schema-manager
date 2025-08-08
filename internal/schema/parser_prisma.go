@@ -78,16 +78,33 @@ func parseField(line string) *Field {
 	f := &Field{Name: parts[0], ColumnName: parts[0], Type: parts[1]}
 	fmt.Printf("DEBUG: parseField line: '%s'\n", line)
 	fmt.Printf("DEBUG: parseField parts: %v\n", parts)
-	for _, p := range parts[2:] {
-		fmt.Printf("DEBUG: parseField part: '%s'\n", p)
-		if strings.HasPrefix(p, "@") {
-			attr := parseFieldAttribute(p)
-			f.Attributes = append(f.Attributes, attr)
-			if attr.Name == "map" && len(attr.Args) > 0 {
-				f.ColumnName = strings.Trim(attr.Args[0], "\"")
+
+	// Parse attributes by finding @ symbols and handling parentheses properly
+	attributeStart := -1
+	for i := 2; i < len(parts); i++ {
+		part := parts[i]
+		if strings.HasPrefix(part, "@") {
+			if attributeStart >= 0 {
+				// Process previous attribute
+				attr := parseFieldAttributeFromParts(parts[attributeStart:i])
+				f.Attributes = append(f.Attributes, attr)
+				if attr.Name == "map" && len(attr.Args) > 0 {
+					f.ColumnName = strings.Trim(attr.Args[0], "\"")
+				}
 			}
+			attributeStart = i
 		}
 	}
+
+	// Process last attribute
+	if attributeStart >= 0 && attributeStart < len(parts) {
+		attr := parseFieldAttributeFromParts(parts[attributeStart:])
+		f.Attributes = append(f.Attributes, attr)
+		if attr.Name == "map" && len(attr.Args) > 0 {
+			f.ColumnName = strings.Trim(attr.Args[0], "\"")
+		}
+	}
+
 	if strings.HasSuffix(f.Type, "?") {
 		f.IsOptional = true
 		f.Type = strings.TrimSuffix(f.Type, "?")
@@ -97,6 +114,18 @@ func parseField(line string) *Field {
 		f.Type = strings.TrimSuffix(f.Type, "[]")
 	}
 	return f
+}
+
+func parseFieldAttributeFromParts(parts []string) *FieldAttribute {
+	if len(parts) == 0 {
+		return &FieldAttribute{Name: "", Args: []string{}}
+	}
+
+	// Reconstruct the full attribute token
+	fullToken := strings.Join(parts, " ")
+	fmt.Printf("DEBUG: parseFieldAttributeFromParts fullToken: '%s'\n", fullToken)
+
+	return parseFieldAttribute(fullToken)
 }
 
 func parseFieldAttribute(token string) *FieldAttribute {

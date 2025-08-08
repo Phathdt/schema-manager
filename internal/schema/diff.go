@@ -1,5 +1,7 @@
 package schema
 
+import "strings"
+
 type FieldChange struct {
 	ModelName    string
 	Field        *Field // Target field
@@ -144,6 +146,16 @@ func fieldsEqual(current, target *Field) bool {
 	if currentNormalizedType != targetNormalizedType {
 		return false
 	}
+
+	// Special handling for DECIMAL types - check if precision/scale changed
+	if currentNormalizedType == "Decimal" && targetNormalizedType == "Decimal" {
+		// Get the actual SQL types to compare DECIMAL precision/scale
+		currentSQL := getSQLTypeForField(current)
+		targetSQL := getSQLTypeForField(target)
+		if currentSQL != targetSQL {
+			return false // DECIMAL precision/scale changed
+		}
+	}
 	if current.IsOptional != target.IsOptional {
 		return false
 	}
@@ -184,8 +196,66 @@ func NormalizeTypeForComparison(fieldType string, attributes []*FieldAttribute) 
 		return "Float"
 	case "JSONB", "JSON":
 		return "Json"
+	case "NUMERIC":
+		return "Decimal"
 	default:
+		// Handle DECIMAL(precision, scale) types
+		if strings.HasPrefix(fieldType, "DECIMAL(") {
+			return "Decimal"
+		}
+
+		// For Prisma types with @db attributes, normalize to the base type
+		if fieldType == "Decimal" {
+			return "Decimal"
+		}
+
 		// For Prisma types, return as-is
 		return fieldType
+	}
+}
+
+// getSQLTypeForField returns the SQL type for a field, considering @db attributes
+func getSQLTypeForField(field *Field) string {
+	// Check for @db type attributes first
+	for _, attr := range field.Attributes {
+		if strings.HasPrefix(attr.Name, "db.") {
+			dbType := strings.TrimPrefix(attr.Name, "db.")
+			if dbType == "VarChar" && len(attr.Args) > 0 {
+				return "VARCHAR(" + attr.Args[0] + ")"
+			}
+			if dbType == "Text" {
+				return "TEXT"
+			}
+			if dbType == "Decimal" && len(attr.Args) >= 2 {
+				return "DECIMAL(" + attr.Args[0] + ", " + attr.Args[1] + ")"
+			}
+		}
+	}
+
+	// If field type is already a SQL type (from migrations), return as-is
+	if strings.HasPrefix(field.Type, "DECIMAL(") {
+		return field.Type
+	}
+
+	// Map Prisma types to SQL types
+	switch field.Type {
+	case "String":
+		return "TEXT"
+	case "Int":
+		return "INTEGER"
+	case "BigInt":
+		return "BIGINT"
+	case "Float":
+		return "DOUBLE PRECISION"
+	case "Decimal":
+		return "NUMERIC"
+	case "Boolean":
+		return "BOOLEAN"
+	case "DateTime":
+		return "TIMESTAMP"
+	case "Json":
+		return "JSONB"
+	default:
+		return field.Type
 	}
 }

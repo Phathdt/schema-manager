@@ -3,6 +3,7 @@ package schema
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 )
 
@@ -412,6 +413,9 @@ func goTypeToSQLType(t string, isAutoIncrement bool, attributes []*FieldAttribut
 			if dbType == "Text" {
 				return "TEXT"
 			}
+			if dbType == "Decimal" && len(attr.Args) >= 2 {
+				return "DECIMAL(" + attr.Args[0] + ", " + attr.Args[1] + ")"
+			}
 		}
 	}
 
@@ -431,6 +435,8 @@ func goTypeToSQLType(t string, isAutoIncrement bool, attributes []*FieldAttribut
 		return "BOOLEAN"
 	case "Float":
 		return "FLOAT"
+	case "Decimal":
+		return "NUMERIC" // Default without precision/scale
 	default:
 		// Check if it's a custom enum type
 		return t // Will be handled as enum type
@@ -654,10 +660,26 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 	currentNormalizedType := NormalizeTypeForComparison(currentField.Type, currentField.Attributes)
 	targetNormalizedType := NormalizeTypeForComparison(targetField.Type, targetField.Attributes)
 
-	if currentNormalizedType != targetNormalizedType {
+	// Get the actual SQL types to compare precision/scale differences
+	currentSQLType := goTypeToSQLType(currentField.Type, false, currentField.Attributes)
+	targetSQLType := goTypeToSQLType(targetField.Type, false, targetField.Attributes)
+
+	// Check if we have a type change (normalized types differ) or DECIMAL precision/scale change
+	hasTypeChange := currentNormalizedType != targetNormalizedType
+	hasDecimalChange := currentNormalizedType == "Decimal" && targetNormalizedType == "Decimal" &&
+		currentSQLType != targetSQLType
+
+	if hasTypeChange || hasDecimalChange {
 		// Type change - need casting
-		newSQLType := goTypeToSQLType(targetField.Type, false, targetField.Attributes)
-		castResult := CanCastType(currentNormalizedType, targetNormalizedType)
+		newSQLType := targetSQLType
+		var castResult TypeCastResult
+
+		if hasDecimalChange {
+			// Special handling for DECIMAL precision/scale changes
+			castResult = handleDecimalPrecisionChange(currentSQLType, targetSQLType)
+		} else {
+			castResult = CanCastType(currentNormalizedType, targetNormalizedType)
+		}
 
 		if castResult.CanCast {
 			if castResult.CastExpression != "" {
@@ -679,7 +701,7 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 			}
 
 			// Collect warnings for risky conversions
-			if castResult.IsRisky || castResult.WarningMessage != "" {
+			if castResult.IsRisky {
 				warning := fmt.Sprintf(
 					"RISKY CONVERSION: %s.%s from %s to %s - %s. This cannot be safely rolled back!",
 					fieldChange.ModelName,
@@ -733,6 +755,98 @@ func generateModifyColumnSQLWithWarning(fieldChange *FieldChange) (string, strin
 	return strings.Join(stmts, "\n"), combinedWarning
 }
 
+// handleDecimalPrecisionChange handles changes between different DECIMAL precision/scale configurations
+func handleDecimalPrecisionChange(currentType, targetType string) TypeCastResult {
+	// Extract precision and scale from both types
+	currentPrec, currentScale := extractDecimalPrecisionScale(currentType)
+	targetPrec, targetScale := extractDecimalPrecisionScale(targetType)
+
+	if currentPrec == -1 || targetPrec == -1 {
+		// Fallback if we can't parse the precision/scale
+		return TypeCastResult{
+			CanCast:        false,
+			WarningMessage: "Cannot parse DECIMAL precision/scale for comparison",
+		}
+	}
+
+	// Check if this is a safe conversion
+	isRisky := false
+	warningMessage := ""
+
+	// Reducing precision is risky (data might not fit)
+	if targetPrec < currentPrec {
+		isRisky = true
+		warningMessage = fmt.Sprintf(
+			"Reducing precision from %d to %d may cause data loss if values exceed the new precision",
+			currentPrec,
+			targetPrec,
+		)
+	}
+
+	// Reducing scale is risky (decimal places will be truncated)
+	if targetScale < currentScale {
+		isRisky = true
+		if warningMessage != "" {
+			warningMessage += "; "
+		}
+		warningMessage += fmt.Sprintf(
+			"Reducing scale from %d to %d will truncate decimal places",
+			currentScale,
+			targetScale,
+		)
+	}
+
+	// Generate appropriate success message for safe changes
+	if !isRisky {
+		if targetPrec > currentPrec && targetScale > currentScale {
+			warningMessage = "Increasing both precision and scale - safe operation"
+		} else if targetPrec > currentPrec {
+			warningMessage = "Increasing precision - safe operation"
+		} else if targetScale > currentScale {
+			warningMessage = "Increasing scale - safe operation"
+		} else {
+			warningMessage = "DECIMAL precision/scale change"
+		}
+	}
+
+	return TypeCastResult{
+		CanCast:        true,
+		CastExpression: "", // No special casting needed for DECIMAL changes
+		IsRisky:        isRisky,
+		WarningMessage: warningMessage,
+	}
+}
+
+// extractDecimalPrecisionScale extracts precision and scale from a DECIMAL type string
+// Returns (-1, -1) if parsing fails
+func extractDecimalPrecisionScale(decimalType string) (int, int) {
+	// Handle DECIMAL(precision, scale) format
+	if !strings.HasPrefix(decimalType, "DECIMAL(") {
+		return -1, -1
+	}
+
+	start := strings.Index(decimalType, "(")
+	end := strings.Index(decimalType, ")")
+	if start == -1 || end == -1 || end <= start {
+		return -1, -1
+	}
+
+	params := decimalType[start+1 : end]
+	parts := strings.Split(params, ",")
+	if len(parts) != 2 {
+		return -1, -1
+	}
+
+	precision, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	scale, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+
+	if err1 != nil || err2 != nil {
+		return -1, -1
+	}
+
+	return precision, scale
+}
+
 func generateModifyColumnSQL(fieldChange *FieldChange) string {
 	sql, _ := generateModifyColumnSQLWithWarning(fieldChange)
 	return sql
@@ -763,14 +877,35 @@ func generateReverseModifyColumnSQL(fieldChange *FieldChange) string {
 	currentNormalizedType := NormalizeTypeForComparison(currentField.Type, currentField.Attributes)
 	targetNormalizedType := NormalizeTypeForComparison(targetField.Type, targetField.Attributes)
 
-	if currentNormalizedType != targetNormalizedType {
+	// Get the actual SQL types to compare precision/scale differences
+	currentSQLType := goTypeToSQLType(currentField.Type, false, currentField.Attributes)
+	targetSQLType := goTypeToSQLType(targetField.Type, false, targetField.Attributes)
+
+	// Check if we have a type change (normalized types differ) or DECIMAL precision/scale change
+	hasTypeChange := currentNormalizedType != targetNormalizedType
+	hasDecimalChange := currentNormalizedType == "Decimal" && targetNormalizedType == "Decimal" &&
+		currentSQLType != targetSQLType
+
+	if hasTypeChange || hasDecimalChange {
 		// Need to reverse the type change: target -> current
-		originalSQLType := goTypeToSQLType(currentField.Type, false, currentField.Attributes)
-		castResult := CanCastType(targetNormalizedType, currentNormalizedType)
+		originalSQLType := currentSQLType
+		var castResult TypeCastResult
+
+		if hasDecimalChange {
+			// Special handling for DECIMAL precision/scale changes - reverse direction
+			castResult = handleDecimalPrecisionChange(targetSQLType, currentSQLType)
+		} else {
+			castResult = CanCastType(targetNormalizedType, currentNormalizedType)
+		}
 
 		if castResult.CanCast && !castResult.IsRisky {
 			// Safe to reverse
-			if castResult.CastExpression != "" {
+			if hasDecimalChange || castResult.CastExpression == "" {
+				// DECIMAL changes or no casting needed
+				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
+					fieldChange.ModelName, targetField.ColumnName, originalSQLType)
+				stmts = append(stmts, stmt)
+			} else {
 				stmt := fmt.Sprintf(
 					"ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
 					fieldChange.ModelName,
@@ -780,17 +915,21 @@ func generateReverseModifyColumnSQL(fieldChange *FieldChange) string {
 					castResult.CastExpression,
 				)
 				stmts = append(stmts, stmt)
-			} else {
-				stmt := fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s;",
-					fieldChange.ModelName, targetField.ColumnName, originalSQLType)
-				stmts = append(stmts, stmt)
 			}
 		} else if castResult.CanCast && castResult.IsRisky {
 			// Risky reversal - warn but allow
-			stmt := fmt.Sprintf("-- WARNING: Risky type reversal from %s to %s\n-- %s\nALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
-				targetNormalizedType, currentNormalizedType, castResult.WarningMessage,
-				fieldChange.ModelName, targetField.ColumnName, originalSQLType, targetField.ColumnName, castResult.CastExpression)
-			stmts = append(stmts, stmt)
+			if hasDecimalChange {
+				// DECIMAL changes don't need USING clause
+				stmt := fmt.Sprintf("-- WARNING: Risky type reversal from %s to %s\n-- %s\nALTER TABLE %s ALTER COLUMN %s TYPE %s;",
+					targetNormalizedType, currentNormalizedType, castResult.WarningMessage,
+					fieldChange.ModelName, targetField.ColumnName, originalSQLType)
+				stmts = append(stmts, stmt)
+			} else {
+				stmt := fmt.Sprintf("-- WARNING: Risky type reversal from %s to %s\n-- %s\nALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s%s;",
+					targetNormalizedType, currentNormalizedType, castResult.WarningMessage,
+					fieldChange.ModelName, targetField.ColumnName, originalSQLType, targetField.ColumnName, castResult.CastExpression)
+				stmts = append(stmts, stmt)
+			}
 		} else {
 			// Cannot reverse automatically
 			stmt := fmt.Sprintf("-- ERROR: Cannot automatically reverse type change for %s.%s\n-- From %s back to %s: %s\n-- Manual intervention required",
