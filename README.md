@@ -983,19 +983,73 @@ make build-release
 
 ### Release Process
 
-For maintainers releasing new versions:
+For maintainers releasing new versions using GitHub Actions:
+
+#### Automated Release via GitHub Actions (Recommended)
+
+1. **Navigate to GitHub Actions**:
+   - Go to your repository on GitHub
+   - Click on the "Actions" tab
+   - Select "Release" workflow
+
+2. **Trigger the Release**:
+   - Click "Run workflow"
+   - Enter the version (e.g., `v1.1.0`)
+   - Click "Run workflow" button
+
+3. **What Happens**:
+   - ✅ Validates version format (must be `vX.Y.Z`)
+   - ✅ Runs tests and builds
+   - ✅ Creates cross-platform binaries (Linux, macOS, Windows for amd64/arm64)
+   - ✅ Generates checksums (SHA256)
+   - ✅ Creates Git tag automatically
+   - ✅ Publishes GitHub Release with release notes
+   - ✅ Uploads all binaries and checksums
+
+#### Manual Release (Alternative)
+
+If you prefer using Make commands:
 
 ```bash
 # Quick release (most common)
-make quick-release VERSION=v0.2.0
+make quick-release VERSION=v1.1.0
 
 # Full release with binaries
-make release VERSION=v0.2.0
+make release VERSION=v1.1.0
 
 # Check release status
 make list-tags
 make version
 ```
+
+#### Release Checklist
+
+Before creating a release:
+
+- [ ] All tests pass (`go test ./...`)
+- [ ] Code is formatted (`go fmt ./...`)
+- [ ] CHANGELOG.md is updated
+- [ ] Version follows semantic versioning
+- [ ] Documentation is up to date
+- [ ] No breaking changes without major version bump
+
+#### CI/CD Pipeline
+
+The project includes two GitHub Actions workflows:
+
+1. **CI Workflow** (`.github/workflows/ci.yml`):
+   - Runs on every push and pull request
+   - Lints code with `go vet` and `go fmt`
+   - Builds with Go 1.24
+   - Runs tests with race detection
+   - Cross-compiles for all platforms
+
+2. **Release Workflow** (`.github/workflows/release.yml`):
+   - Manual trigger with version input
+   - Builds production binaries for all platforms
+   - Creates checksums for verification
+   - Automatically creates Git tags
+   - Publishes GitHub releases with auto-generated release notes
 
 ## License
 

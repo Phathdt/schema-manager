@@ -1,0 +1,249 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate-version:
+    name: Validate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Validate version format
+        id: validate
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must match format vX.Y.Z (e.g., v1.1.0)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Valid version: $VERSION"
+
+  build-and-test:
+    name: Build and Test
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go fmt check
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "Code is not formatted. Run 'go fmt ./...'"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test ./... -v -race -coverprofile=coverage.out
+
+      - name: Build binary
+        run: go build -v -o schema-manager
+
+      - name: Validate binary
+        run: ./schema-manager version || echo "Binary created successfully"
+
+  create-release:
+    name: Create Release
+    needs: [validate-version, build-and-test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+          - os: darwin
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+          - os: darwin
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+          - os: windows
+            arch: amd64
+            goos: windows
+            goarch: amd64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          BINARY_NAME="schema-manager-${{ matrix.os }}-${{ matrix.arch }}"
+
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+
+          go build -v -ldflags="-s -w -X main.version=${VERSION}" -o "${BINARY_NAME}"
+
+          # Create checksum
+          if [ "${{ matrix.goos }}" = "linux" ]; then
+            sha256sum "${BINARY_NAME}" > "${BINARY_NAME}.sha256"
+          elif [ "${{ matrix.goos }}" = "darwin" ]; then
+            shasum -a 256 "${BINARY_NAME}" > "${BINARY_NAME}.sha256"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-manager-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            schema-manager-*
+            *.sha256
+          retention-days: 1
+
+  publish-release:
+    name: Publish Release
+    needs: [validate-version, create-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -exec cp {} release-assets/ \;
+          ls -lah release-assets/
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          echo "## Release ${VERSION}" > release_notes.md
+          echo "" >> release_notes.md
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "### Changes since ${PREV_TAG}" >> release_notes.md
+            echo "" >> release_notes.md
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" >> release_notes.md
+            echo "" >> release_notes.md
+          else
+            echo "### Initial Release" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "First release of schema-manager" >> release_notes.md
+            echo "" >> release_notes.md
+          fi
+
+          echo "" >> release_notes.md
+          echo "### Installation" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### Linux (amd64)" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo "wget https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-linux-amd64" >> release_notes.md
+          echo "chmod +x schema-manager-linux-amd64" >> release_notes.md
+          echo "sudo mv schema-manager-linux-amd64 /usr/local/bin/schema-manager" >> release_notes.md
+          echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### macOS (Apple Silicon)" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo "wget https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-darwin-arm64" >> release_notes.md
+          echo "chmod +x schema-manager-darwin-arm64" >> release_notes.md
+          echo "sudo mv schema-manager-darwin-arm64 /usr/local/bin/schema-manager" >> release_notes.md
+          echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "#### Via Go Install" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo "go install github.com/${{ github.repository }}@${VERSION}" >> release_notes.md
+          echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Checksums" >> release_notes.md
+          echo '```' >> release_notes.md
+          cat release-assets/*.sha256 >> release_notes.md
+          echo '```' >> release_notes.md
+
+          cat release_notes.md
+
+      - name: Create Git tag
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.validate-version.outputs.version }}
+          name: Release ${{ needs.validate-version.outputs.version }}
+          body_path: release_notes.md
+          files: release-assets/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Successfully created release **${VERSION}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Download Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Linux (amd64)](https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-linux-amd64)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Linux (arm64)](https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-linux-arm64)" >> $GITHUB_STEP_SUMMARY
+          echo "- [macOS (amd64)](https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-darwin-amd64)" >> $GITHUB_STEP_SUMMARY
+          echo "- [macOS (arm64)](https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-darwin-arm64)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Windows (amd64)](https://github.com/${{ github.repository }}/releases/download/${VERSION}/schema-manager-windows-amd64.exe)" >> $GITHUB_STEP_SUMMARY

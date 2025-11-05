@@ -1,4 +1,5 @@
 schema-manager
+schema-manager-*
 *.exe
 *.out
 *.test
@@ -8,6 +9,9 @@ coverage*
 .vscode/
 .env
 *.log
+*.sha256
+test_schema.prisma
+release_notes.md
 
 /migrations
 /.serena/cache
