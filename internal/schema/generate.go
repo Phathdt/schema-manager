@@ -438,6 +438,8 @@ func goTypeToSQLType(t string, isAutoIncrement bool, attributes []*FieldAttribut
 		return "FLOAT"
 	case "Decimal":
 		return "NUMERIC" // Default without precision/scale
+	case "Json":
+		return "JSONB"
 	default:
 		// Check if it's a custom enum type
 		return t // Will be handled as enum type

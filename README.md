@@ -60,6 +60,8 @@ model Product {
   description String?
   price       Decimal  @db.Decimal(10, 2) // precise monetary values
   inputAmount Decimal  @map("input_amount") @db.Decimal(38, 0) // large integer as decimal
+  metadata    Json     // JSONB column for flexible data storage
+  config      Json?    // Optional JSONB column for configuration
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -72,6 +74,11 @@ model Product {
 - **DECIMAL Support**: Full support for PostgreSQL DECIMAL types with precision and scale
   - `Decimal @db.Decimal(10, 2)` → `DECIMAL(10, 2)` for monetary values
   - `Decimal @db.Decimal(38, 0)` → `DECIMAL(38, 0)` for large integers
+- **JSONB Support**: Full PostgreSQL JSONB type support for flexible schema
+  - `Json` → `JSONB` for storing JSON documents
+  - `Json?` → `JSONB` (nullable) for optional JSON data
+  - Automatic type casting with validation when converting from TEXT
+  - Query and index support for JSON data structures
 - **Inline Comments**: Supports inline comments (`// comment`) for field documentation
 - **Intelligent Type Changes**: Detects DECIMAL precision/scale changes with risk assessment
 - **Safe Migration Parser**: Handles complex types like `DECIMAL(36, 0) NOT NULL` correctly
@@ -460,6 +467,99 @@ ALTER TABLE products DROP COLUMN IF EXISTS input_amount;
 -- +goose StatementEnd
 ```
 
+### 3. Adding JSONB Fields for Flexible Data
+
+**Updated schema.prisma:**
+```prisma
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  fillType    String   @map("fill_type")
+  status      String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  inputAmount Decimal  @map("input_amount") @db.Decimal(38, 0)
+  metadata    Json     // Store product metadata as JSON
+  settings    Json?    // Optional settings
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@map("products")
+}
+```
+
+**Generated Migration:**
+```sql
+-- +goose Up
+-- +goose StatementBegin
+ALTER TABLE products ADD COLUMN metadata JSONB NOT NULL;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+ALTER TABLE products ADD COLUMN settings JSONB;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+ALTER TABLE products DROP COLUMN IF EXISTS metadata;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+ALTER TABLE products DROP COLUMN IF EXISTS settings;
+-- +goose StatementEnd
+```
+
+**Use Cases:**
+- **Product Metadata**: Store dynamic attributes, tags, or custom fields
+  ```json
+  {
+    "tags": ["popular", "featured"],
+    "attributes": {
+      "color": "blue",
+      "size": "large"
+    },
+    "seo": {
+      "title": "Best Product",
+      "description": "Amazing product"
+    }
+  }
+  ```
+
+- **Configuration Settings**: Store flexible configuration without schema changes
+  ```json
+  {
+    "notifications": {
+      "email": true,
+      "sms": false
+    },
+    "preferences": {
+      "theme": "dark",
+      "language": "en"
+    }
+  }
+  ```
+
+- **API Response Caching**: Store full API responses for offline access
+- **Event Logs**: Store structured event data with varying fields
+- **Feature Flags**: Dynamic feature configuration per record
+
+**JSON vs JSONB**
+
+Schema Manager always uses **JSONB** for Prisma's `Json` type because:
+
+- **Performance**: JSONB supports indexing (GIN indexes) for fast queries
+- **Storage**: Binary format is more space-efficient
+- **Query Support**: Better operator support (`@>`, `?`, `?&`, etc.)
+- **Standard Practice**: PostgreSQL documentation recommends JSONB over JSON
+
+If you specifically need JSON type (rare), use a custom migration:
+```bash
+schema-manager empty --name "use_json_type"
+# Then manually specify JSON instead of JSONB
+```
+
 ## Command Reference
 
 ### `generate`
@@ -752,7 +852,8 @@ goose status
 ### 🚀 **Future Enhancements**
 
 #### **Phase 1: Core Improvements (v0.3.x)**
-- [ ] **Enhanced type mapping** - More PostgreSQL data types support
+- [x] **Enhanced type mapping** - JSONB data type support ✅
+- [ ] **More PostgreSQL data types** - Array types, UUID, etc.
 - [ ] **Relationship detection** - Foreign key constraints in introspection
 - [ ] **Index optimization** - Better index handling in migrations
 - [ ] **Migration templates** - Custom migration templates

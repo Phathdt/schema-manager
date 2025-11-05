@@ -189,6 +189,25 @@ func CanCastType(sourceType, targetType string) TypeCastResult {
 				CastExpression: "::TEXT",
 				IsRisky:        false,
 			},
+			"JSON": {
+				CanCast:        true,
+				CastExpression: "::JSON",
+				IsRisky:        false,
+				WarningMessage: "Converting JSONB to JSON - safe but JSONB is generally preferred for performance",
+			},
+		},
+		"JSON": {
+			"JSONB": {
+				CanCast:        true,
+				CastExpression: "::JSONB",
+				IsRisky:        false,
+				WarningMessage: "Converting JSON to JSONB - safe operation, JSONB offers better performance",
+			},
+			"TEXT": {
+				CanCast:        true,
+				CastExpression: "::TEXT",
+				IsRisky:        false,
+			},
 		},
 		"NUMERIC": {
 			"INTEGER": {
